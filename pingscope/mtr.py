@@ -54,7 +54,7 @@ class MtrScheduler:
     async def init(self):
         self.last = await asyncio.to_thread(self.store.last_mtr_times)
 
-    async def _job(self, family, address, path, reason, s):
+    async def _job(self, family, address, path, reason, s, trigger_loss=None):
         try:
             async with self.sem:
                 ts = int(time.time())
@@ -63,7 +63,7 @@ class MtrScheduler:
                 except Exception as e:  # store failed runs too, so they show up in the history
                     hubs, error = [], (str(e)[:300] or e.__class__.__name__)
                     log.warning("mtr to %s failed: %s", address, error)
-                await asyncio.to_thread(self.store.insert_mtr, path, ts, reason, hubs, error)
+                await asyncio.to_thread(self.store.insert_mtr, path, ts, reason, hubs, error, round(trigger_loss, 1))
         except Exception:
             log.exception("Storing mtr result failed")
         finally:
@@ -99,7 +99,7 @@ class MtrScheduler:
                 continue
             self.last[path] = ts
             self.running.add(path)
-            task = asyncio.create_task(self._job(family, address, path, reason, s))
+            task = asyncio.create_task(self._job(family, address, path, reason, s, loss))
             self.tasks.add(task)
             task.add_done_callback(self.tasks.discard)
         if ts % 3600 < s["interval"]:

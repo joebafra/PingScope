@@ -300,7 +300,9 @@ function renderMtrCard(t){
   card.innerHTML = `<div class="mtrhead"><h2>Traceroutes (mtr)</h2><div class="row">` +
     (paths.length > 1 ? `<div class="seg" id="mtrfam">${paths.map(s => `<button data-v="${s.family}">IPv${s.family}</button>`).join('')}</div>` : '') +
     `<div class="seg" id="mtrfilter"><button data-v="0">All</button><button data-v="1">Problems only</button></div></div></div>` +
-    `<p class="muted small" style="margin:6px 0 4px">Every ${Math.round((S.data.mtr_interval || 900) / 60)} minutes normally, every minute while there is packet loss or the target is down. Click a time to open the report, or click a point in a graph.</p>` +
+    `<p class="muted small" style="margin:6px 0 4px">Every ${Math.round((S.data.mtr_interval || 900) / 60)} minutes normally, every minute while there is packet loss or the target is down. ` +
+    'The label shows why a traceroute ran (<b>loss 5%</b> = the measurement round before it lost 1 in 20 pings); the right side shows what the traceroute itself measured. ' +
+    'Click a time to open the report, or click a point in a graph.</p>' +
     `<div id="mtrsel"></div><div id="mtrlist"></div><button class="btn" id="mtrmore" style="display:none;margin-top:8px">Load older</button>`;
   if (paths.length > 1) seg('#mtrfam', () => String(MTR.fam), v => { MTR.fam = +v; MTR.key = paths.find(s => s.family === +v).key; loadMtr(true); });
   seg('#mtrfilter', () => MTR.issues ? '1' : '0', v => { MTR.issues = v === '1'; loadMtr(true); });
@@ -312,9 +314,13 @@ function renderMtrCard(t){
 function mtrEl(r, open){
   const d = document.createElement('details'); d.className = 'mtr'; d.dataset.id = r.id;
   const last = r.hubs[r.hubs.length - 1];
-  d.innerHTML = `<summary><span class="mt">${fmtDT(r.ts)}</span><span class="reason r-${r.reason}">${r.reason}</span>` +
+  const why = r.reason === 'scheduled' ? 'Regular traceroute (no problems in the measurement round before it).'
+    : `Started because the measurement round just before it had ${r.trigger_loss != null ? fmtLoss(r.trigger_loss) : 'some'} packet loss. ` +
+      'The traceroute then measures again for a few seconds, so it can show no loss when the loss was brief.';
+  const label = r.reason === 'loss' && r.trigger_loss != null ? `loss ${fmtLoss(r.trigger_loss)}` : r.reason;
+  d.innerHTML = `<summary><span class="mt">${fmtDT(r.ts)}</span><span class="reason r-${r.reason}" title="${esc(why)}">${label}</span>` +
     (r.error ? '<span class="mm" style="color:var(--bad)">mtr failed</span>'
-      : `<span class="mm"><span class="dot" style="background:${lossColor(r.loss ?? 100)}"></span>${r.loss == null ? '–' : Math.round(r.loss) + '%'} loss at destination · ${r.hops} hops · ${!last || last.host === '???' ? '–' : fmtMs(last.avg)}</span>`) + '</summary>';
+      : `<span class="mm"><span class="dot" style="background:${lossColor(r.loss ?? 100)}"></span>traceroute: ${r.loss == null ? '–' : Math.round(r.loss) + '%'} loss at destination · ${r.hops} hops · ${!last || last.host === '???' ? '–' : fmtMs(last.avg)}</span>`) + '</summary>';
   const fill = () => {
     if (d._f) return; d._f = 1;
     if (r.error){ d.insertAdjacentHTML('beforeend', `<div class="hint" style="margin-bottom:10px">mtr error: <code>${esc(r.error)}</code></div>`); return; }

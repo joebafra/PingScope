@@ -106,6 +106,8 @@ class Store:
         self.c.execute("PRAGMA synchronous=NORMAL")
         self.c.execute("PRAGMA foreign_keys=ON")
         self.c.executescript(SCHEMA)
+        if "trigger_loss" not in [r[1] for r in self.c.execute("PRAGMA table_info(mtr)")]:
+            self.c.execute("ALTER TABLE mtr ADD COLUMN trigger_loss REAL")
         self.lock = threading.RLock()
         self._settings = None
 
@@ -417,11 +419,12 @@ class Store:
 
     # ---- mtr ------------------------------------------------------------------------
 
-    def insert_mtr(self, path, ts, reason, hubs, error=None):
+    def insert_mtr(self, path, ts, reason, hubs, error=None, trigger_loss=None):
+        """trigger_loss: packet loss (%) of the measurement round that started this traceroute."""
         loss = hubs[-1]["loss"] if hubs else 100.0
         with self.lock, self.c:
-            self.c.execute("INSERT INTO mtr(path, ts, reason, loss, hops, hubs, error) VALUES (?,?,?,?,?,?,?)",
-                           (path, ts, reason, loss, len(hubs), json.dumps(hubs), error))
+            self.c.execute("INSERT INTO mtr(path, ts, reason, loss, hops, hubs, error, trigger_loss) VALUES (?,?,?,?,?,?,?,?)",
+                           (path, ts, reason, loss, len(hubs), json.dumps(hubs), error, trigger_loss))
 
     def last_mtr_times(self):
         return {r[0]: r[1] for r in self._q("SELECT path, MAX(ts) FROM mtr GROUP BY path")}
@@ -433,7 +436,8 @@ class Store:
     @staticmethod
     def _mtr_row(r):
         return {"id": r["id"], "ts": r["ts"], "reason": r["reason"], "loss": r["loss"], "hops": r["hops"],
-                "hubs": json.loads(r["hubs"]), "error": r["error"]}
+                "hubs": json.loads(r["hubs"]), "error": r["error"],
+                "trigger_loss": r["trigger_loss"] if "trigger_loss" in r.keys() else None}
 
     def mtr_list(self, path, before=None, since=None, limit=30, issues_only=False):
         q, args = "SELECT * FROM mtr WHERE path=?", [path]
