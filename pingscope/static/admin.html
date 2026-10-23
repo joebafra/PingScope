@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · PingScope</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M5 20h5l3-9 4 14 3-9h7' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="static/style.css">
+<style>
+header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;margin-right:auto;color:var(--fg)}
+.brand:hover{text-decoration:none}
+.brand small{font-weight:500;color:var(--muted);font-size:12px;border:1px solid var(--line);border-radius:5px;padding:0 6px}
+.tabs{display:flex;gap:2px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto;position:sticky;top:57px;z-index:19}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 12px;font:inherit;font-size:14px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+main{padding:18px 20px 48px;max-width:1400px;margin:0 auto}
+.auth{max-width:380px;margin:9vh auto;padding:0 16px}
+.auth .card{padding:22px}
+.auth h1{margin-bottom:6px}
+.split{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+.tree{position:sticky;top:120px;max-height:calc(100vh - 140px);overflow:auto;padding:8px}
+.tree ul{list-style:none;margin:0;padding:0}
+.tree ul ul{padding-left:14px}
+.tree a{display:flex;gap:6px;align-items:center;padding:5px 8px;border-radius:7px;color:var(--fg);font-size:13px}
+.tree a:hover{background:var(--hover);text-decoration:none}
+.tree a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.tree .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree .cnt{font-size:11px;color:var(--faint)}
+.tree a.drop{outline:2px dashed var(--accent)}
+.phead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.phead h2{font-size:18px;margin-right:auto}
+.bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;padding:6px 10px;margin-bottom:10px;font-size:13px}
+.bulk select{width:auto}
+td.acts{white-space:nowrap;text-align:right}
+td.acts .btn{padding:2px 7px}
+tr.off td{opacity:.5}
+.st{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--muted);margin-right:6px;white-space:nowrap}
+.mono.small{font-size:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.hint-box{font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:-4px 0 12px}
+.testres{font-size:13px;margin-top:10px}
+.testres div{display:flex;gap:8px;align-items:center;padding:3px 0;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{font:inherit;font-size:12px;font-family:var(--mono);border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:14px;padding:2px 9px;cursor:pointer}
+.chips button:hover{border-color:var(--accent)}
+.stat{display:inline-block;margin-right:18px}
+.stat b{font-size:20px;display:block}
+.outline{font-size:13px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel2)}
+.outline ul{list-style:none;margin:0;padding-left:16px}
+.outline>ul{padding-left:0}
+.warnlist{font-size:12px;color:var(--warn);max-height:200px;overflow:auto;margin:8px 0 0;padding-left:18px}
+.settings-sec{margin-bottom:18px}
+.settings-sec h3{margin-top:0}
+.inline-msg{font-size:13px;margin-top:8px}
+.warnbox{background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}
+@media (max-width:900px){
+  .split{grid-template-columns:1fr}
+  .tree{position:static;max-height:280px}
+  .grid2{grid-template-columns:1fr}
+  main{padding:14px 16px 40px}
+  .hide-sm{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="./"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M5 20h5l3-9 4 14 3-9h7" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="siteTitle">PingScope</span><small>Admin</small></a>
+  <a class="btn" href="./">Dashboard</a>
+  <span class="muted small hidden" id="who"></span>
+  <button class="btn hidden" id="logout">Log out</button>
+</header>
+<nav class="tabs hidden" id="tabs">
+  <button data-tab="targets">Targets</button><button data-tab="ipv6">IPv6</button><button data-tab="import">Import &amp; export</button><button data-tab="settings">Settings</button><button data-tab="users">Users</button>
+</nav>
+<main id="main"></main>
+
+<dialog id="tdlg"><form method="dialog" id="tform" novalidate>
+  <div class="dhead"><h2 id="tdlgTitle">Add target</h2><button class="btn ghost" value="cancel" formnovalidate aria-label="Close">✕</button></div>
+  <div class="dbody">
+    <label class="field" data-f="name"><span>Name</span><input name="name" placeholder="e.g. ns1.example.nl"></label>
+    <div class="grid2">
+      <label class="field" data-f="group_id"><span>Group</span><select name="group_id"></select></label>
+      <label class="field" data-f="probe"><span>Type</span><select name="probe"></select></label>
+    </div>
+    <div class="hint-box" id="probeHelp"></div>
+    <label class="field" data-f="host"><span>Host</span><input name="host" placeholder="hostname, IPv4 or IPv6 address" autocomplete="off" spellcheck="false">
+      <div class="help">A hostname is looked up for both A (IPv4) and AAAA (IPv6) records.</div></label>
+    <label class="field" data-f="host_v6"><span>IPv6 address <span class="faint">(optional)</span></span>
+      <div class="row"><input name="host_v6" placeholder="e.g. 2001:db8::1" autocomplete="off" spellcheck="false"><button type="button" class="btn" id="lookupBtn">Find AAAA</button></div>
+      <div class="help">Use this when the host is an IPv4 address and the same service also has an IPv6 address.</div>
+      <div class="chips" id="lookupRes"></div></label>
+    <label class="field" data-f="families"><span>Measure over</span><select name="families"></select></label>
+    <div class="grid2" id="dnsFields">
+      <label class="field" data-f="dns_query"><span>Query name</span><input name="dns_query" placeholder="example.com" spellcheck="false"></label>
+      <label class="field" data-f="dns_type"><span>Record type</span><select name="dns_type"></select></label>
+    </div>
+    <div class="grid2">
+      <label class="field" data-f="port" id="portField"><span>Port</span><input name="port" type="number" min="1" max="65535"></label>
+      <label class="field" data-f="count"><span>Probes per round <span class="faint">(optional)</span></span><input name="count" type="number" min="1" max="100"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="mtr"> <span>Run mtr traceroutes for this target</span></label>
+    <label class="check"><input type="checkbox" name="enabled"> <span>Enabled</span></label>
+    <label class="field" data-f="note"><span>Note <span class="faint">(only visible here)</span></span><textarea name="note" rows="2" style="font-family:inherit;font-size:13px"></textarea></label>
+    <div class="testres" id="testRes"></div>
+  </div>
+  <div class="dfoot">
+    <button type="button" class="btn danger" id="tDelete" style="margin-right:auto">Delete</button>
+    <button type="button" class="btn" id="tTest">Test now</button>
+    <button class="btn" value="cancel" formnovalidate>Cancel</button>
+    <button type="submit" class="btn primary" value="save" id="tSave">Save</button>
+  </div>
+</form></dialog>
+
+<dialog id="gdlg"><form method="dialog" id="gform">
+  <div class="dhead"><h2 id="gdlgTitle">Group</h2><button class="btn ghost" value="cancel" aria-label="Close">✕</button></div>
+  <div class="dbody">
+    <label class="field"><span>Name</span><input name="name" required></label>
+    <label class="field"><span>Parent group</span><select name="parent_id"></select></label>
+  </div>
+  <div class="dfoot"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
+</form></dialog>
+
+<script src="static/common.js"></script>
+<script src="static/admin.js"></script>
+</body>
+</html>

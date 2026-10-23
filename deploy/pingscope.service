@@ -1,0 +1,23 @@
+# systemd unit for running PingScope without Docker. See docs/INSTALL.md, "Option B".
+[Unit]
+Description=PingScope latency monitoring
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pingscope
+Group=pingscope
+WorkingDirectory=/opt/pingscope
+Environment=PINGSCOPE_DB=/var/lib/pingscope/pingscope.db
+Environment=PINGSCOPE_LISTEN=127.0.0.1
+Environment=PINGSCOPE_PORT=8080
+ExecStart=/opt/pingscope/venv/bin/python -m pingscope
+Restart=on-failure
+RestartSec=5
+AmbientCapabilities=CAP_NET_RAW
+NoNewPrivileges=false
+ProtectSystem=full
+ReadWritePaths=/var/lib/pingscope
+
+[Install]
+WantedBy=multi-user.target

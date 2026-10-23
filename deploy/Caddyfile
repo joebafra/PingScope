@@ -1,0 +1,16 @@
+# Caddy obtains and renews a Let's Encrypt certificate for PINGSCOPE_DOMAIN automatically
+# and redirects http:// to https://. Several names: PINGSCOPE_DOMAIN="ping.example.nl, status.example.nl"
+# ACME_OPTION is "email <ACME_EMAIL>" when an email is set (see docker-compose.yml), otherwise empty.
+{
+	{$ACME_OPTION}
+}
+
+{$PINGSCOPE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:{$PINGSCOPE_PORT}
+	header Strict-Transport-Security "max-age=31536000"
+	log {
+		output stderr
+		level WARN
+	}
+}

@@ -1,0 +1,33 @@
+*** Targets ***
+
+probe = FPing
+
+menu = Top
+title = Network monitoring
+
++ dns
+menu = Public DNS
+title = Public DNS
+
+++ google
+title = Google 8.8.8.8
+host = 8.8.8.8
+
+++ googledns
+probe = DNS
+title = Google 8.8.8.8 (dns lookup)
+host = 8.8.8.8
+lookup = example.com
+pings = 10
+
+++ cloudflare
+title = Cloudflare 1.1.1.1
+host = 1.1.1.1
+
++ web
+menu = Websites
+title = Websites
+
+++ example
+title = example.com
+host = example.com
