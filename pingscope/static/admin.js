@@ -172,16 +172,16 @@ function renderTargetsPane(){
       `<button class="btn primary" id="tAdd" ${A.data.groups.length ? '' : 'disabled'}>+ Add target</button></div>` +
     `<div class="row" style="margin-bottom:10px"><input id="tq" type="search" placeholder="Search all targets…" value="${esc(A.q)}"></div>` +
     `<div id="bulkbar"></div>` +
-    `<div class="tblwrap"><table class="tbl"><thead><tr><th style="width:28px"><input type="checkbox" id="selAll"></th><th>Name</th>` +
+    `<div class="tblwrap"><table class="tbl ttbl"><thead><tr><th style="width:28px"><input type="checkbox" id="selAll"></th><th>Name</th>` +
       (showGroup ? '<th class="hide-sm">Group</th>' : '') +
-      `<th>Type</th><th class="hide-sm">Host</th><th class="hide-sm">IPv6</th><th>Status</th><th></th></tr></thead><tbody>` +
+      `<th>Type</th><th class="hide-sm">Host</th><th class="hide-sm hide-md">IPv6</th><th>Status</th><th></th></tr></thead><tbody>` +
     (ts.length ? ts.map((t, i) => `<tr data-t="${t.id}" draggable="true" class="${t.enabled ? '' : 'off'}">
         <td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
-        ${showGroup ? `<td class="hide-sm small muted">${esc(pathText(t.group_id))}</td>` : ''}
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
+        ${showGroup ? `<td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td>` : ''}
         <td>${probeBadge(t.probe)}</td>
-        <td class="hide-sm mono small">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
-        <td class="hide-sm mono small">${t.families === 'ipv4' ? '<span class="faint">off</span>' : t.host_v6 ? esc(t.host_v6) : (A.data.series[t.id] || []).some(x => x.family === 6) ? '<span class="faint">via AAAA</span>' : t.host && !/^[\d.]+$/.test(t.host) ? '<span class="faint">no AAAA</span>' : '<span class="faint">—</span>'}</td>
+        <td class="hide-sm mono small wrap">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
+        <td class="hide-sm hide-md mono small wrap v6">${t.families === 'ipv4' ? '<span class="faint">off</span>' : t.host_v6 ? esc(t.host_v6) : (A.data.series[t.id] || []).some(x => x.family === 6) ? '<span class="faint">via AAAA</span>' : t.host && !/^[\d.]+$/.test(t.host) ? '<span class="faint">no AAAA</span>' : '<span class="faint">—</span>'}</td>
         <td>${seriesHTML(t)}</td>
         <td class="acts">${!showGroup && g?.sort_mode !== 'name' ? `<button class="btn ghost up" title="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn ghost down" title="Move down" ${i < ts.length - 1 ? '' : 'disabled'}>↓</button>` : ''}<button class="btn sm tedit">Edit</button></td></tr>`).join('')
       : `<tr><td colspan="8" class="empty">${A.q ? 'No targets match.' : g ? 'No targets in this group yet.' : 'No targets yet.'}</td></tr>`) +

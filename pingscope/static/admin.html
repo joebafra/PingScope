@@ -14,11 +14,11 @@ header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px s
 .tabs{display:flex;gap:2px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto;position:sticky;top:57px;z-index:19}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 12px;font:inherit;font-size:14px;color:var(--muted);cursor:pointer;white-space:nowrap}
 .tabs button.on{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
-main{padding:18px 20px 48px;max-width:1400px;margin:0 auto}
+main{padding:18px 20px 48px;margin:0 auto}
 .auth{max-width:380px;margin:9vh auto;padding:0 16px}
 .auth .card{padding:22px}
 .auth h1{margin-bottom:6px}
-.split{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+.split{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px;align-items:start}
 .tree{position:sticky;top:120px;max-height:calc(100vh - 140px);overflow:auto;padding:8px}
 .tree ul{list-style:none;margin:0;padding:0}
 .tree ul ul{padding-left:14px}
@@ -35,7 +35,14 @@ main{padding:18px 20px 48px;max-width:1400px;margin:0 auto}
 td.acts{white-space:nowrap;text-align:right}
 td.acts .btn{padding:2px 7px}
 tr.off td{opacity:.5}
-.st{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--muted);margin-right:6px;white-space:nowrap}
+.st{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--muted);white-space:nowrap;line-height:1.6}
+/* targets table: fit the available width instead of scrolling sideways */
+.ttbl td.wrap{overflow-wrap:anywhere;word-break:break-word;min-width:110px}
+.ttbl td.grp{min-width:110px;max-width:220px}
+.ttbl td.v6{min-width:210px}
+.ttbl td.nm{min-width:160px}
+.ttbl td,.ttbl th{padding-left:8px;padding-right:8px}
+@media (max-width:1250px){ .ttbl .hide-md{display:none} }
 .mono.small{font-size:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
 .hint-box{font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:-4px 0 12px}
