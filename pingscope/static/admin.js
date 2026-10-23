@@ -62,7 +62,7 @@ async function load(){
   A.kids = new Map();
   for (const g of A.data.groups){ if (!A.kids.has(g.parent_id)) A.kids.set(g.parent_id, []); A.kids.get(g.parent_id).push(g); }
   A.probeMap = Object.fromEntries(A.data.probes.map(p => [p.name, p]));
-  if (A.gid !== 'all' && !A.groupMap.has(A.gid)) A.gid = 'all';
+  if (A.gid !== 'all' && A.gid !== 'offline' && !A.groupMap.has(A.gid)) A.gid = 'all';
 }
 function route(){
   const h = location.hash.slice(1);
@@ -128,18 +128,20 @@ function renderTree(){
   const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
     (kids(g.id).length ? `<ul>${kids(g.id).map(node).join('')}</ul>` : '') + '</li>';
   box.innerHTML = `<div class="row" style="padding:2px 4px 8px"><b class="grow">Groups</b><button class="btn sm" id="addTop">+ Group</button></div>` +
-    `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>${kids(null).map(node).join('')}</ul>` +
+    `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>` +
+    `<li><a href="#" data-g="offline" class="${A.gid === 'offline' ? 'on' : ''}"><span class="name"><span class="dot ${offlineCount() ? 'down' : 'ok'}" style="margin-right:6px"></span>Offline</span><span class="cnt">${offlineCount()}</span></a></li>` +
+    `${kids(null).map(node).join('')}</ul>` +
     (A.data.groups.length ? '' : '<p class="muted small" style="padding:4px 8px">No groups yet. Create one, or import your SmokePing config under <a href="#import">Import &amp; export</a>.</p>');
   box.onclick = e => {
     const a = e.target.closest('a[data-g]'); if (!a) return;
     e.preventDefault();
-    A.gid = a.dataset.g === 'all' ? 'all' : +a.dataset.g; store.set('psa_gid', A.gid); A.sel.clear();
+    A.gid = ['all', 'offline'].includes(a.dataset.g) ? a.dataset.g : +a.dataset.g; store.set('psa_gid', A.gid); A.sel.clear();
     renderTree(); renderTargetsPane();
   };
   $('#addTop').onclick = () => openGroup(null, null);
   // drag targets onto a group to move them
   $$('a[data-g]', box).forEach(a => {
-    if (a.dataset.g === 'all') return;
+    if (a.dataset.g === 'all' || a.dataset.g === 'offline') return;
     a.addEventListener('dragover', e => { e.preventDefault(); a.classList.add('drop'); });
     a.addEventListener('dragleave', () => a.classList.remove('drop'));
     a.addEventListener('drop', async e => {
@@ -158,7 +160,63 @@ function paneTargets(){
   }
   return ts;
 }
+function isOffline(t){
+  const xs = A.data.series[t.id] || [];
+  return t.enabled && xs.length > 0 && xs.every(s => status(s) === 'down');
+}
+const offlineCount = () => A.data.targets.filter(isOffline).length;
+
+function fmtDuration(sec){
+  if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + ' min';
+  if (sec < 86400) return Math.round(sec / 3600) + ' h';
+  return Math.round(sec / 86400) + ' days';
+}
+
+async function renderOfflinePane(){
+  const pane = $('#tpane'); if (!pane) return;
+  const minDays = +store.get('psa_offmin', 0);
+  pane.innerHTML = `<div class="phead"><div style="margin-right:auto"><h2 style="margin:0">Offline targets</h2>
+      <div class="muted small">Enabled targets that got no reply at all in the last round (all address families), or whose hostname no longer resolves.</div></div>
+      <label class="row small muted" style="gap:6px">Offline for at least
+        <select id="offMin" style="width:auto">${[[0, 'any time'], [1 / 24, '1 hour'], [1, '1 day'], [7, '7 days'], [30, '30 days']].map(([v, l]) => `<option value="${v}" ${v === minDays ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+    <div id="bulkbar"></div><div id="offbody" class="muted">Loading…</div>`;
+  $('#offMin').onchange = e => { store.set('psa_offmin', +e.target.value); renderOfflinePane(); };
+  let r;
+  try { r = await api('api/admin/offline'); } catch(e){ $('#offbody').textContent = e.message; return; }
+  if (A.gid !== 'offline') return;
+  const byId = new Map(A.data.targets.map(t => [t.id, t]));
+  const rows = r.targets.filter(o => byId.has(o.id) && (r.now - (o.since || r.now)) >= minDays * 86400);
+  A.offlineIds = rows.map(o => o.id);
+  $('#offbody').outerHTML = `<div class="tblwrap"><table class="tbl ttbl"><thead><tr><th style="width:28px"><input type="checkbox" id="selAll"></th><th>Name</th><th class="hide-sm">Group</th><th>Type</th><th class="hide-sm">Host</th><th>Offline since</th><th>Reason</th><th></th></tr></thead><tbody>` +
+    (rows.length ? rows.map(o => { const t = byId.get(o.id);
+      return `<tr data-t="${t.id}"><td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a></td>
+        <td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td><td>${probeBadge(t.probe)}</td>
+        <td class="hide-sm mono small wrap">${esc(t.host || t.host_v6)}</td>
+        <td class="nowrap">${o.never ? `<span style="color:var(--bad)">never replied</span>${o.since ? `<div class="faint small">added ${fmtShort(o.since)}</div>` : ''}`
+          : `<b style="color:var(--bad)">${fmtDuration(r.now - o.since)}</b><div class="faint small">since ${fmtShort(o.since)}</div>`}</td>
+        <td class="small">${o.reason === 'unresolved' ? 'hostname does not resolve' : 'no reply'}</td>
+        <td class="acts"><button class="btn sm tedit">Edit</button></td></tr>`; }).join('')
+      : `<tr><td colspan="8" class="empty">${minDays ? 'No targets offline for that long.' : 'All targets are online. 🎉'}</td></tr>`) +
+    '</tbody></table></div><p class="muted small">Tip: select targets and use <b>Delete</b> or <b>Disable</b> above the list. Disabled targets keep their history and stop being measured.</p>';
+  renderBulk();
+  const sa = $('#selAll');
+  sa.checked = rows.length > 0 && rows.every(o => A.sel.has(o.id));
+  sa.onchange = e => {
+    rows.forEach(o => e.target.checked ? A.sel.add(o.id) : A.sel.delete(o.id));
+    $$('#tpane tbody .sel').forEach(c => { c.checked = e.target.checked; });
+    renderBulk();
+  };
+  pane.querySelector('tbody').onclick = e => {
+    const tr = e.target.closest('tr[data-t]'); if (!tr) return;
+    const t = byId.get(+tr.dataset.t);
+    if (e.target.classList.contains('sel')){ e.target.checked ? A.sel.add(t.id) : A.sel.delete(t.id); renderBulk(); return; }
+    if (e.target.closest('.tedit')){ e.preventDefault(); openTarget(t); }
+  };
+}
+
 function renderTargetsPane(){
+  if (A.gid === 'offline') return renderOfflinePane();
   const pane = $('#tpane'); if (!pane) return;
   const g = A.gid === 'all' ? null : A.groupMap.get(A.gid);
   const ts = paneTargets();

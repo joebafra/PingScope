@@ -438,6 +438,14 @@ class Store:
         return [{"t": b, "sent": a[0], "lost": a[1], "q": [round(x, 3) for x in quantiles(a[2])]}
                 for b, a in sorted(buckets.items())]
 
+    def last_ok(self, key):
+        """Timestamp of the last round in which this series got at least one reply (None if never)."""
+        r = self._one("SELECT MAX(ts) FROM samples WHERE series=? AND lost<sent", (key,))
+        if r and r[0] is not None:
+            return r[0]
+        r = self._one("SELECT MAX(ts) FROM hourly WHERE series=? AND lost<sent", (key,))
+        return r[0] + 3600 if r and r[0] is not None else None
+
     def oldest_raw(self):
         r = self._one("SELECT MIN(ts) FROM samples")
         return r[0] if r and r[0] is not None else None

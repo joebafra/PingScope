@@ -473,6 +473,28 @@ async def resolve(body: dict = Body(...)):
     return {"a": a, "aaaa": aaaa}
 
 
+@admin.get("/offline")
+def offline():
+    """Enabled targets where every series is down (no replies) or unresolved, with how long they've been down."""
+    out = []
+    for t in store.targets(enabled_only=True):
+        xs = collector.series.get(t["id"], [])
+        if not xs:
+            continue
+        lasts = [collector.latest.get(x.key) for x in xs]
+        if not all(x.address is None or (lt and lt["loss"] >= 100) for x, lt in zip(xs, lasts)):
+            continue
+        oks = [v for v in (store.last_ok(x.key) for x in xs) if v]
+        last_ok = max(oks) if oks else None
+        out.append({
+            "id": t["id"], "last_ok": last_ok, "since": last_ok or t["created"] or None, "never": last_ok is None,
+            "reason": "unresolved" if any(x.address is None for x in xs) else "no reply",
+            "families": [x.family for x in xs],
+        })
+    out.sort(key=lambda o: o["since"] or 0)
+    return {"targets": out, "now": int(time.time())}
+
+
 @admin.get("/ipv6")
 async def ipv6_suggestions():
     """Targets without IPv6 monitoring, with AAAA candidates found via their host or name."""
