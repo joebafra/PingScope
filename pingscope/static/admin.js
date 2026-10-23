@@ -463,6 +463,7 @@ function viewSettings(){
       Last round: ${st.last_run ? `${fmtShort(st.last_run)} (${ago(st.last_run)}, took ${st.duration}s)` : 'not yet'} ·
       fping: ${st.fping_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
       mtr: ${st.mtr_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'}</p></div>
+    <div class="card pad" style="margin-bottom:16px" id="httpsCard"><h2>HTTPS / SSL certificate</h2><p class="muted small" style="margin:6px 0 0">Checking…</p></div>
     <div id="swarn">${A.data.warnings.map(w => `<div class="warnbox">${esc(w)}</div>`).join('')}</div>
     <form id="sform">${sections.map(sec => `<div class="card pad settings-sec"><h3>${esc(sec)}</h3>` +
       sch.filter(x => x.section === sec).map(x => x.type === 'bool'
@@ -472,6 +473,7 @@ function viewSettings(){
             : `<input name="${x.key}" ${x.type === 'int' ? `type="number" min="${x.min ?? ''}" max="${x.max ?? ''}"` : ''} value="${esc(s[x.key])}">`) +
           (x.help ? `<div class="help">${esc(x.help)}</div>` : '') + '</label>').join('') + '</div>').join('')}
     <div class="row"><button class="btn primary">Save settings</button></div></form></div>`;
+  loadHttps();
   $('#sform').onsubmit = async e => {
     e.preventDefault();
     const body = {};
@@ -484,6 +486,28 @@ function viewSettings(){
       toast('Settings saved');
     } catch(err){ toast(err.message, true); }
   };
+}
+
+async function loadHttps(){
+  const box = $('#httpsCard'); if (!box) return;
+  let r;
+  try { r = await api('api/admin/https'); } catch(e){ box.querySelector('p').textContent = e.message; return; }
+  const line = (ok, txt) => `<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span class="dot ${ok === true ? 'ok' : ok === false ? 'down' : ''}"></span><span>${txt}</span></div>`;
+  let html = '<h2>HTTPS / SSL certificate</h2>';
+  if (!r.configured){
+    html += `<p class="muted small" style="margin:6px 0 10px">No hostname is configured, so PingScope runs without HTTPS${r.this_request_https ? ' (this page is served over HTTPS by another proxy)' : ''}.</p>` +
+      '<p class="small" style="margin:0">To enable HTTPS with a free Let\'s Encrypt certificate, run <code>sudo ./install.sh</code> again on the server and enter your hostname, or set <code>PINGSCOPE_DOMAIN</code> and <code>COMPOSE_PROFILES=https</code> in <code>.env</code> and run <code>docker compose up -d</code>. See docs/INSTALL.md, section "HTTPS / SSL".</p>';
+  } else {
+    for (const d of r.domains){
+      const c = d.certificate;
+      html += `<div style="margin-top:10px"><b class="mono">${esc(d.domain)}</b>` +
+        (c && c.valid ? line(c.days_left > 14, `Certificate valid · ${esc(c.issuer)} · expires ${fmtShort(c.expires)} (${c.days_left} days, renewed automatically)`)
+          : line(false, esc(d.error || 'No valid certificate yet'))) +
+        line(d.redirect, d.redirect ? 'HTTP redirects to HTTPS' : 'HTTP does not redirect to HTTPS') + '</div>';
+    }
+    html += '<p class="muted small" style="margin:10px 0 0">The hostname is set on the server in <code>.env</code> (<code>PINGSCOPE_DOMAIN</code>). Certificates come from Let\'s Encrypt via Caddy and renew automatically about 30 days before they expire.</p>';
+  }
+  box.innerHTML = html;
 }
 
 // ---------- users ----------

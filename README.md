@@ -30,13 +30,19 @@ Latency and packet-loss monitoring for **IPv4 and IPv6**, in the spirit of Smoke
 
 ## Install
 
-```bash
-git clone https://github.com/internetcreators/PingScope.git /opt/pingscope
-cd /opt/pingscope
-sudo ./install.sh
-```
+1. [Create an SSH deploy key](docs/INSTALL.md#2-github-access-with-an-ssh-deploy-key) on the server so it can read this private repository.
+2. Clone and run the installer:
+   ```bash
+   sudo git clone git@github.com:internetcreators/PingScope.git /opt/pingscope
+   cd /opt/pingscope
+   sudo ./install.sh
+   ```
 
-The installer asks for your hostname and email, sets up Docker, HTTPS and the firewall, and prints a one-time setup code for the first admin account. See **[docs/INSTALL.md](docs/INSTALL.md)** for the full guide, installing without Docker, updates, backups and troubleshooting.
+The installer asks for your hostname and email. It sets up Docker, the **Let's Encrypt SSL certificate** (with HTTP→HTTPS redirect) and the firewall, and prints a one-time setup code for the first admin account.
+
+- Full guide: **[docs/INSTALL.md](docs/INSTALL.md)**.
+- How SSL works and how to change the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**.
+- Certificate status: **Admin → Settings → HTTPS / SSL certificate**.
 
 ## Built with
 

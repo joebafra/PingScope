@@ -11,6 +11,8 @@ WorkingDirectory=/opt/pingscope
 Environment=PINGSCOPE_DB=/var/lib/pingscope/pingscope.db
 Environment=PINGSCOPE_LISTEN=127.0.0.1
 Environment=PINGSCOPE_PORT=8080
+# Your hostname; only used for the HTTPS status in Admin → Settings
+Environment=PINGSCOPE_DOMAIN=ping.example.nl
 ExecStart=/opt/pingscope/venv/bin/python -m pingscope
 Restart=on-failure
 RestartSec=5

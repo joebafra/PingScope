@@ -489,6 +489,52 @@ def export():
     return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+def _check_https(domain):
+    """Check the certificate Caddy serves for `domain` and that HTTP redirects to HTTPS."""
+    import datetime
+    import http.client
+    import socket
+    import ssl
+    out = {"domain": domain, "certificate": None, "redirect": None, "error": None}
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection(("127.0.0.1", 443), timeout=5) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as tls:
+                cert = tls.getpeercert()
+        issuer = dict(x[0] for x in cert.get("issuer", ()))
+        expires = datetime.datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z").replace(tzinfo=datetime.timezone.utc)
+        out["certificate"] = {
+            "valid": True, "issuer": issuer.get("organizationName") or issuer.get("commonName", ""),
+            "expires": int(expires.timestamp()),
+            "days_left": (expires - datetime.datetime.now(datetime.timezone.utc)).days,
+            "names": [v for k, v in cert.get("subjectAltName", ()) if k == "DNS"],
+        }
+    except ssl.SSLCertVerificationError as e:
+        out["certificate"] = {"valid": False}
+        out["error"] = f"Certificate not valid: {e.verify_message}"
+    except ssl.SSLError as e:
+        out["error"] = f"No valid certificate for {domain} yet ({e.reason or e}). Check that DNS points to this server and port 80 is open."
+    except OSError as e:
+        out["error"] = f"No HTTPS on port 443 ({e.strerror or e}). Is Caddy running?"
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", 80, timeout=5)
+        conn.request("GET", "/", headers={"Host": domain})
+        r = conn.getresponse()
+        loc = r.getheader("Location") or ""
+        out["redirect"] = r.status in (301, 302, 307, 308) and loc.startswith("https://")
+        conn.close()
+    except OSError:
+        out["redirect"] = False
+    return out
+
+
+@admin.get("/https")
+async def https_status(request: Request):
+    domains = [d.strip() for d in os.environ.get("PINGSCOPE_DOMAIN", "").split(",") if d.strip()]
+    checks = await asyncio.gather(*[asyncio.to_thread(_check_https, d) for d in domains])
+    return {"configured": bool(domains), "this_request_https": _is_https(request), "domains": checks}
+
+
 @admin.put("/settings")
 def save_settings(body: dict = Body(...)):
     try:
