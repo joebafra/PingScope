@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, importer, settings as settings_mod
@@ -60,6 +60,10 @@ async def security_headers(request: Request, call_next):
     resp.headers.setdefault("Referrer-Policy", "same-origin")
     if request.url.path.startswith("/api/"):
         resp.headers.setdefault("Cache-Control", "no-store")
+    elif request.url.path.startswith("/static/"):
+        # files are referenced with ?v=<hash>; a new version gets a new URL, so they can be cached long
+        resp.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable"
+                                if request.url.query.startswith("v=") else "no-cache")
     return resp
 
 
@@ -115,14 +119,34 @@ def _throttle(request):
 
 # ---- pages --------------------------------------------------------------------------
 
+def _asset_version():
+    """Short hash of all static files: changes with every update, so browsers never mix old and new files."""
+    import hashlib
+    h = hashlib.sha1()
+    for f in sorted(STATIC.iterdir()):
+        if f.is_file():
+            h.update(f.name.encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version()
+
+
+def _page(name):
+    html = (STATIC / name).read_text(encoding="utf-8")
+    html = re.sub(r'(static/[\w.-]+\.(?:js|css))"', lambda m: f'{m.group(1)}?v={ASSET_VERSION}"', html)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return _page("index.html")
 
 
 @app.get("/admin")
 def admin_page():
-    return FileResponse(STATIC / "admin.html")
+    return _page("admin.html")
 
 
 # ---- session ------------------------------------------------------------------------
