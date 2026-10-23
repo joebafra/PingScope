@@ -540,7 +540,8 @@ function viewSettings(){
       sch.filter(x => x.section === sec).map(x => x.type === 'bool'
         ? `<label class="check"><input type="checkbox" name="${x.key}" ${s[x.key] ? 'checked' : ''}> <span><b>${esc(x.label)}</b>${x.help ? `<br><span class="muted small">${esc(x.help)}</span>` : ''}</span></label>`
         : `<label class="field" data-f="${x.key}"><span>${esc(x.label)}</span>` +
-          (x.key === 'site_remark' ? `<textarea name="${x.key}" rows="2" style="font-family:inherit;font-size:14px">${esc(s[x.key])}</textarea>`
+          (x.options ? `<select name="${x.key}">${x.options.map(([v, l]) => `<option value="${v}" ${s[x.key] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+            : x.key === 'site_remark' ? `<textarea name="${x.key}" rows="2" style="font-family:inherit;font-size:14px">${esc(s[x.key])}</textarea>`
             : `<input name="${x.key}" ${x.type === 'int' ? `type="number" min="${x.min ?? ''}" max="${x.max ?? ''}"` : ''} value="${esc(s[x.key])}">`) +
           (x.help ? `<div class="help">${esc(x.help)}</div>` : '') + '</label>').join('') + '</div>').join('')}
     <div class="row"><button class="btn primary">Save settings</button></div></form></div>`;

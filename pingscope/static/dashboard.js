@@ -1,6 +1,6 @@
 /* PingScope dashboard */
 (() => {
-const {$, $$, esc, store, api, sortTargets, fmtMs, fmtLoss, fmtDT, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
+const {$, $$, esc, store, api, sortTargets, classicStats, fmtMs, fmtLoss, fmtDT, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
 const RANGES = {'3h': 'Last 3 hours', '1d': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days', '1y': 'Last year'};
 const S = {
   data: null, groups: new Map(), kids: new Map(), targets: new Map(), byGroup: new Map(),
@@ -249,7 +249,12 @@ function famBox(t, f, range, big, onPick){
   box.innerHTML = `<div class="clabel"><span class="badge">IPv${f}</span>${s.address ? `<span class="addr">${esc(s.address)}</span>` : ''}` +
     `<span class="now" data-now="${s.key}">${valHTML(s)}</span></div>` +
     (s.error ? `<div class="err">${esc(s.error)}</div>` : '');
-  box.appendChild(chart(s.key, range, onPick));
+  const title = document.createElement('div'); title.className = 'ctitle';
+  title.textContent = `${RANGES[range]} · IPv${f} · ${t.name}`;
+  box.appendChild(title);
+  const cs = document.createElement('div'); cs.className = 'cstats';
+  box.appendChild(chart(s.key, range, onPick, d => { cs.innerHTML = classicStats(d); }));
+  box.appendChild(cs);
   return box;
 }
 
@@ -285,7 +290,8 @@ function viewTarget(tid){
       const cv = fb.querySelector('canvas');
       if (cv){
         const st = document.createElement('div'); st.className = 'stats'; card.appendChild(st);
-        cv._onData = d => { const x = chartStats(d);
+        const classic = cv._onData;
+        cv._onData = d => { classic?.(d); const x = chartStats(d);
           st.innerHTML = `<div>Avg median<b>${fmtMs(x.avg)}</b></div><div>Min<b>${fmtMs(x.min)}</b></div><div>Max<b>${fmtMs(x.max)}</b></div>` +
             `<div>Jitter<b>${fmtMs(x.jit)}</b></div><div>Loss<b style="color:${x.loss == null ? 'inherit' : lossColor(x.loss)}">${x.loss == null ? '–' : x.loss.toFixed(2) + '%'}</b></div>`; };
       }
@@ -398,6 +404,11 @@ async function refresh(first){
   try {
     const d = await api('api/tree');
     S.data = d; index();
+    const theme = d.site.theme || 'modern';
+    if (document.documentElement.dataset.theme !== theme){
+      document.documentElement.dataset.theme = theme;
+      requestAnimationFrame(() => $$('canvas.chart').forEach(c => draw(c)));
+    }
     $('#siteTitle').textContent = d.site.title;
     $('#status').textContent = d.last_run ? 'updated ' + ago(d.last_run) : 'waiting for first round…';
     $('#adminLink').textContent = d.logged_in ? 'Admin' : 'Log in';

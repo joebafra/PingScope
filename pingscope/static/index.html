@@ -6,6 +6,8 @@
 <title>PingScope</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M5 20h5l3-9 4 14 3-9h7' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="static/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&amp;family=Source+Sans+3:wght@400;600;700&amp;display=swap">
 <style>
 body{display:grid;grid-template-rows:auto 1fr;min-height:100vh}
 header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap}
@@ -98,6 +100,50 @@ details.mtr summary:hover .mt{color:var(--accent)}
 #mtrsel:not(:empty){border:1px solid var(--accent);border-radius:8px;padding:0 10px;margin:8px 0;scroll-margin-top:72px}
 #mtrsel .lbl{font-size:12px;color:var(--accent);padding-top:6px}
 .empty{color:var(--muted);padding:36px 0;text-align:center}
+/* ---------- graph extras, only shown in the classic theme ---------- */
+.ctitle,.cstats{display:none}
+/* ---------- Classic (SmokePing-style) theme: Admin → Settings → Dashboard style ---------- */
+:root[data-theme=classic]{
+  --bg:#E9E9E9;--panel:#F7F7F7;--panel2:#F0F0F0;--fg:#1A1A1A;--muted:#555555;--faint:#6E6E6E;
+  --line:#C8C8C8;--grid:#DDDDDD;--chart-grid:#E8A0A0;--hover:#EFEFEF;--smoke:0,0,0;
+  --accent:#1F5FBF;--accent-fg:#FFFFFF;--accent-soft:#1F5FBF14;
+  --ok:#16A316;--warn:#D97706;--bad:#D62828;--unknown:#9A9A9A;
+  --plot-bg:#FFFFFF;--axis:#555555;--grid-dash:1 2;
+  --chart-font:10px "Source Code Pro",ui-monospace,monospace;
+  --mono:"Source Code Pro",ui-monospace,monospace;
+  color-scheme:light;
+}
+:root[data-theme=classic] body{font-family:"Source Sans 3",system-ui,sans-serif}
+:root[data-theme=classic] header{background:#FFFFFF;border-bottom-color:#D0D0D0}
+:root[data-theme=classic] aside{background:#2B2B2B;border-right:0}
+:root[data-theme=classic] .nav a{color:#E0E0E0;border-radius:0}
+:root[data-theme=classic] .nav a:hover{background:#363636}
+:root[data-theme=classic] .nav a.on{background:#1F1F1F;color:#FFFFFF;box-shadow:inset 3px 0 0 #00D400}
+:root[data-theme=classic] .nav .cnt,:root[data-theme=classic] .nav .caret{color:#A8A8A8}
+:root[data-theme=classic] .nav .sep{background:#3A3A3A}
+:root[data-theme=classic] .powered{color:#9A9A9A}
+:root[data-theme=classic] .dot.ok{background:#3BD13B}
+:root[data-theme=classic] .seg,:root[data-theme=classic] .btn{border-radius:3px}
+:root[data-theme=classic] .seg button.on{background:#2B2B2B;color:#FFFFFF}
+:root[data-theme=classic] .tile,:root[data-theme=classic] .tblwrap,:root[data-theme=classic] .card{border-radius:2px}
+:root[data-theme=classic] .trow{background:transparent;border:0;border-radius:0;padding:4px 0 14px}
+:root[data-theme=classic] .thead .tname{font-size:19px;color:#1A1A1A}
+:root[data-theme=classic] .cbox{background:#F7F7F7;border:1px solid #C8C8C8;padding:10px 12px 12px}
+:root[data-theme=classic] .cbox canvas.chart{height:150px}
+:root[data-theme=classic] .big canvas.chart{height:190px}
+:root[data-theme=classic] .ctitle{display:block;text-align:center;font:500 13px var(--mono);color:#222222;margin:6px 0 4px}
+:root[data-theme=classic] .cstats{display:block;font:12px/1.65 var(--mono);color:#222222;margin-top:6px;overflow-wrap:anywhere}
+:root[data-theme=classic] .cstats b{font-weight:600}
+:root[data-theme=classic] .cstats span{white-space:nowrap;margin-right:6px}
+:root[data-theme=classic] .cstats .lc{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center}
+:root[data-theme=classic] .cstats .lc span{display:inline-flex;align-items:center;gap:4px}
+:root[data-theme=classic] .cstats .lc i{display:inline-block;width:10px;height:10px}
+:root[data-theme=classic] .rangegrid .card{background:transparent;border:0;padding:0}
+:root[data-theme=classic] .big .stats{display:none}
+:root[data-theme=classic] .nofam{background:#FFFFFF;border-style:dotted}
+:root[data-theme=classic] .legend{font-family:var(--mono)}
+:root[data-theme=classic] .badge.dns{color:#7c3aed}
+:root[data-theme=classic] .badge.tcp{color:#0e7490}
 .mobile-only{display:none}
 .tbl .col-both{display:none}
 .warnbox{background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}

@@ -4,6 +4,10 @@
 SCHEMA = {
     "site_title": ("PingScope", str, "Site", "Site title", "Your own title, shown in the header and browser tab.", None, None),
     "site_remark": ("", str, "Site", "Welcome text", "Shown at the top of the overview page.", None, None),
+    "theme": ("modern", str, "Site", "Dashboard style",
+              "Modern: the default look, follows the visitor's light/dark preference. "
+              "Classic: SmokePing-style with a dark menu, framed graphs and the familiar legend under every graph.",
+              None, None),
     "public_dashboard": (True, bool, "Site", "Public dashboard",
                          "Allow viewing graphs without logging in. The admin panel always requires a login.", None, None),
     "public_show_hops": (False, bool, "Site", "Show traceroute hops to visitors",
@@ -37,12 +41,22 @@ SCHEMA = {
 
 DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 
+# Settings that only accept a fixed set of values: key -> [(value, label), ...]
+CHOICES = {
+    "theme": [("modern", "Modern"), ("classic", "Classic (SmokePing-style)")],
+}
+
 
 def coerce(key, value):
     """Validate and convert a setting value. Raises ValueError with a readable message."""
     if key not in SCHEMA:
         raise ValueError(f"Unknown setting: {key}")
     default, typ, _, label, _, lo, hi = SCHEMA[key]
+    if key in CHOICES:
+        v = str(value or "").strip().lower()
+        if v not in [c[0] for c in CHOICES[key]]:
+            raise ValueError(f"{label}: choose one of {', '.join(c[0] for c in CHOICES[key])}")
+        return v
     if typ is bool:
         if isinstance(value, str):
             return value.strip().lower() in ("1", "true", "yes", "on")
@@ -75,6 +89,6 @@ def check(s):
 def schema_for_ui():
     return [
         {"key": k, "default": v[0], "type": v[1].__name__, "section": v[2], "label": v[3], "help": v[4],
-         "min": v[5], "max": v[6]}
+         "min": v[5], "max": v[6], "options": CHOICES.get(k)}
         for k, v in SCHEMA.items()
     ]

@@ -24,6 +24,7 @@ Latency and packet-loss monitoring for **IPv4 and IPv6**, in the spirit of Smoke
   - Traceroute hops are hidden from visitors unless you enable them.
   - Logged-in admins see everything.
 - **Your own branding:** site title and welcome text are set in **Admin → Settings**.
+- **Two dashboard styles:** *Modern* (default, follows light/dark mode) or *Classic*, a SmokePing-style look with a dark menu, framed graphs and the familiar median rtt / packet loss legend under every graph. Switch any time under **Admin → Settings → Dashboard style**.
 - **HTTPS out of the box:**
   - Caddy gets a Let's Encrypt certificate for your own hostname.
   - It redirects HTTP to HTTPS and renews the certificate automatically.

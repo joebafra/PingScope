@@ -69,16 +69,21 @@ const PS = (() => {
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
     const st = getComputedStyle(document.documentElement), v = n => st.getPropertyValue(n).trim();
-    c.font = '10px system-ui,sans-serif';
+    c.font = v('--chart-font') || '10px system-ui,sans-serif';
     if (!d){ c.fillStyle = v('--faint'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('Loading…', W / 2, H / 2); return; }
     const L = 50, R = 8, T = 8, B = 18, pw = W - L - R, ph = H - T - B, span = d.end - d.start;
     const tops = d.points.filter(p => p.q.length).map(p => p.q[p.q.length - 1]).sort((a, b) => a - b);
     const ymax = niceCeil(tops.length ? tops[Math.min(tops.length - 1, Math.floor(tops.length * .95))] * 1.1 : 10);
     const X = t => L + (t - d.start) / span * pw, Y = ms => T + ph - Math.min(ms, ymax) / ymax * ph;
     cv._g = {L, pw, span};
-    c.lineWidth = 1; c.strokeStyle = v('--grid'); c.fillStyle = v('--muted');
+    const plotBg = v('--plot-bg'), axis = v('--axis'), dash = v('--grid-dash');
+    if (plotBg){ c.fillStyle = plotBg; c.fillRect(L, T, pw, ph); }
+    c.lineWidth = 1; c.strokeStyle = v('--chart-grid') || v('--grid'); c.fillStyle = v('--muted');
     c.textAlign = 'right'; c.textBaseline = 'middle';
+    c.setLineDash(dash ? dash.split(/\s+/).map(Number) : []);
     for (let i = 0; i <= 4; i++){ const ms = ymax * i / 4, y = Math.round(Y(ms)) + .5; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke(); c.fillText(fmtMs(ms), L - 6, y); }
+    c.setLineDash([]);
+    if (axis){ c.strokeStyle = axis; c.beginPath(); c.moveTo(L + .5, T); c.lineTo(L + .5, T + ph + .5); c.lineTo(W - R, T + ph + .5); c.stroke(); }
     c.textAlign = 'center'; c.textBaseline = 'top';
     const nx = W < 380 ? 3 : 5;
     for (let i = 0; i < nx; i++){ const f = i / (nx - 1), x = L + pw * f; c.fillText(fmtAxis(d.start + span * f, span), Math.min(Math.max(x, L + 20), W - R - 20), T + ph + 5); }
@@ -102,10 +107,12 @@ const PS = (() => {
   function chartStats(d){
     let s = 0, l = 0, mn = Infinity, mx = 0; const ms = [];
     for (const p of d.points){ s += p.sent; l += p.lost; if (p.q.length){ ms.push(med(p.q)); mn = Math.min(mn, p.q[0]); mx = Math.max(mx, p.q[p.q.length - 1]); } }
-    if (!ms.length) return {avg: null, min: null, max: null, jit: null, loss: s ? 100 : null};
+    if (!ms.length) return {avg: null, min: null, max: null, jit: null, loss: s ? 100 : null, medMin: null, medMax: null, now: null, sd: null};
     const avg = ms.reduce((a, b) => a + b, 0) / ms.length;
     let jit = 0; for (let i = 1; i < ms.length; i++) jit += Math.abs(ms[i] - ms[i - 1]);
-    return {avg, min: mn, max: mx, jit: ms.length > 1 ? jit / (ms.length - 1) : 0, loss: s ? l / s * 100 : null};
+    const sd = Math.sqrt(ms.reduce((a, b) => a + (b - avg) * (b - avg), 0) / ms.length);
+    return {avg, min: mn, max: mx, jit: ms.length > 1 ? jit / (ms.length - 1) : 0, loss: s ? l / s * 100 : null,
+            medMin: Math.min(...ms), medMax: Math.max(...ms), now: ms[ms.length - 1], sd};
   }
 
   let tip;
@@ -158,6 +165,14 @@ const PS = (() => {
     (PROBE_ORDER[a.probe] ?? 9) - (PROBE_ORDER[b.probe] ?? 9) || a.id - b.id;
   const sortTargets = (list, mode) => mode === 'name' ? list.slice().sort(byName) : list;
 
-  return {$, $$, esc, store, api, sortTargets, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
+  // SmokePing-style text legend under a graph (classic theme)
+  function classicStats(d){
+    const x = chartStats(d), f = v => v == null ? '–' : fmtMs(v);
+    return `<div>median rtt:&nbsp; <span><b>${f(x.avg)}</b> avg</span> <span><b>${f(x.medMax)}</b> max</span> <span><b>${f(x.medMin)}</b> min</span> <span><b>${f(x.now)}</b> now</span> <span><b>${f(x.sd)}</b> sd</span></div>` +
+      `<div>packet loss: <b>${x.loss == null ? '–' : x.loss.toFixed(2) + ' %'}</b> avg</div>` +
+      `<div class="lc">loss color: ${LOSS.map(([, c, l]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>`;
+  }
+
+  return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
           med, draw, chartStats, hookChart, legendHTML, LOCALE};
 })();

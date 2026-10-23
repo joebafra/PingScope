@@ -141,7 +141,11 @@ def _page(name):
 
 @app.get("/")
 def index():
-    return _page("index.html")
+    resp = _page("index.html")
+    theme = store.settings()["theme"]
+    resp.body = resp.body.replace(b'<html lang="en">', f'<html lang="en" data-theme="{theme}">'.encode(), 1)
+    resp.headers["content-length"] = str(len(resp.body))
+    return resp
 
 
 @app.get("/admin")
@@ -245,7 +249,7 @@ def tree(request: Request, _=Depends(can_view)):
                         port=t["port"] if t["probe"] != "ping" else None)
         targets.append(item)
     return {
-        "site": {"title": s["site_title"], "remark": s["site_remark"]},
+        "site": {"title": s["site_title"], "remark": s["site_remark"], "theme": s["theme"]},
         "groups": groups, "targets": targets,
         "probes": {k: p.label for k, p in PROBES.items()},
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
