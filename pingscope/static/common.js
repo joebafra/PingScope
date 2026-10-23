@@ -45,7 +45,8 @@ const PS = (() => {
   }
 
   // ---- status ----
-  const LOSS = [[0,'#22a34a','0%'],[5,'#2b7fff','≤ 5%'],[10,'#8b5cf6','≤ 10%'],[25,'#f59e0b','≤ 25%'],[50,'#ef4444','≤ 50%'],[99.9,'#9f1239','> 50%'],[100,'#e11d48','100%']];
+  // SmokePing-style loss colours: bright green = no loss, then light blue, blue, magenta, orange, red, dark red
+  const LOSS = [[0,'#00d400','0%'],[5,'#00b8ff','≤ 5%'],[10,'#0059ff','≤ 10%'],[25,'#ff00ff','≤ 25%'],[50,'#ff7a00','≤ 50%'],[99.9,'#ff0000','> 50%'],[100,'#a00000','100%']];
   const lossColor = p => { for (const [m, c] of LOSS) if (p <= m) return c; return LOSS[LOSS.length - 1][1]; };
   function status(s){
     if (!s) return 'unknown';
@@ -83,14 +84,19 @@ const PS = (() => {
     for (let i = 0; i < nx; i++){ const f = i / (nx - 1), x = L + pw * f; c.fillText(fmtAxis(d.start + span * f, span), Math.min(Math.max(x, L + 20), W - R - 20), T + ph + 5); }
     if (!d.points.length){ c.fillStyle = v('--faint'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('No data yet', L + pw / 2, T + ph / 2); return; }
     const bw = Math.max(1, pw * d.step / span), smoke = v('--smoke');
+    // 1) smoke: spread of all probes, darker towards the median
     for (const p of d.points){
       if (!p.sent) continue;
-      const x = X(p.t), q = p.q, k = q.length, loss = p.lost / p.sent * 100;
+      const x = X(p.t), q = p.q, k = q.length;
       if (!k){ c.fillStyle = lossColor(100); c.fillRect(x, T, bw, 4); continue; }
       c.fillStyle = `rgba(${smoke},${Math.min(.35, .9 / Math.ceil(k / 2))})`;
       for (let i = 0; i < Math.floor(k / 2); i++){ const y1 = Y(q[k - 1 - i]), y2 = Y(q[i]); c.fillRect(x, y1, bw, Math.max(1, y2 - y1)); }
-      c.fillStyle = lossColor(loss); c.fillRect(x, Y(med(q)) - 1.25, Math.max(bw, 1.5), 2.5);
     }
+    // 2) median line on top, coloured by packet loss, with a thin dark edge so it stands out on the smoke
+    const lw = H >= 160 ? 3 : 2.5, w = Math.max(bw, 2), dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const meds = d.points.filter(p => p.sent && p.q.length).map(p => [X(p.t), Y(med(p.q)), p.lost / p.sent * 100]);
+    if (!dark){ c.fillStyle = 'rgba(0,0,0,.45)'; for (const [x, y] of meds) c.fillRect(x - 0.5, y - lw / 2 - 0.75, w + 1, lw + 1.5); }
+    for (const [x, y, loss] of meds){ c.fillStyle = lossColor(loss); c.fillRect(x, y - lw / 2, w, lw); }
   }
 
   function chartStats(d){
