@@ -1,0 +1,10 @@
+[Unit]
+Description=PingScope: deploy new version from GitHub
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/pingscope
+ExecStart=/opt/pingscope/deploy.sh
+TimeoutStartSec=20min
