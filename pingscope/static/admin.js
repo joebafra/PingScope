@@ -179,7 +179,7 @@ function renderTargetsPane(){
         <td><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
         ${showGroup ? `<td class="hide-sm small muted">${esc(pathText(t.group_id))}</td>` : ''}
         <td>${probeBadge(t.probe)}</td>
-        <td class="hide-sm mono small">${esc(t.host)}${t.probe === 'dns' && t.dns_query ? `<div class="faint">?${esc(t.dns_query)}</div>` : ''}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
+        <td class="hide-sm mono small">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
         <td class="hide-sm mono small">${t.families === 'ipv4' ? '<span class="faint">off</span>' : t.host_v6 ? esc(t.host_v6) : (A.data.series[t.id] || []).some(x => x.family === 6) ? '<span class="faint">via AAAA</span>' : t.host && !/^[\d.]+$/.test(t.host) ? '<span class="faint">no AAAA</span>' : '<span class="faint">—</span>'}</td>
         <td>${seriesHTML(t)}</td>
         <td class="acts">${!showGroup ? `<button class="btn ghost up" title="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn ghost down" title="Move down" ${i < ts.length - 1 ? '' : 'disabled'}>↓</button>` : ''}<button class="btn sm tedit">Edit</button></td></tr>`).join('')

@@ -38,7 +38,7 @@ function gPath(gid){ const out = []; while (gid && S.groups.has(gid)){ const g =
 const pathText = gid => gPath(gid).map(g => g.name).join(' › ');
 function matches(t){
   if (!S.q) return true;
-  const hay = [t.name, t.host, t.host_v6, t.dns_query, pathText(t.group_id), ...t.series.map(s => s.address)].join(' ').toLowerCase();
+  const hay = [t.name, t.host, t.host_v6, pathText(t.group_id), ...t.series.map(s => s.address)].join(' ').toLowerCase();
   return S.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
 }
 
@@ -225,7 +225,6 @@ function targetRow(t){
 function hostLabel(t){
   let s = t.host || t.host_v6;
   if (!s) return '';
-  if (t.probe === 'dns' && t.dns_query) s += `  ?${t.dns_query}`;
   if (t.port && t.probe !== 'ping') s += `  :${t.port}`;
   return s;
 }
@@ -264,7 +263,6 @@ function viewTarget(tid){
       (t.host ? `<span>Host <b>${esc(t.host)}</b></span>` : '') +
       (s4 ? `<span>IPv4 <b>${esc(s4.address || 'unresolved')}</b></span>` : '') +
       (s6 ? `<span>IPv6 <b>${esc(s6.address || 'unresolved')}</b></span>` : '') +
-      (t.probe === 'dns' ? `<span>Query <b>${esc(t.dns_query || '.')}</b></span>` : '') +
       (t.port && t.probe !== 'ping' ? `<span>Port <b>${t.port}</b></span>` : '') + '</div>'
       : `<div class="info"><span>Measured over ${t.series.map(s => 'IPv' + s.family).join(' and ') || '–'}</span></div>`) +
     `<div id="ranges"></div>` +

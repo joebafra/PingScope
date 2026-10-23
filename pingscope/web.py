@@ -199,9 +199,8 @@ def tree(request: Request, _=Depends(can_view)):
             "id": t["id"], "group_id": t["group_id"], "name": t["name"], "probe": t["probe"], "families": t["families"],
             "series": [_series_json(x, admin) for x in collector.series.get(t["id"], [])],
         }
-        if admin:
+        if admin:  # the DNS query name is never shown on the dashboard, only in the admin edit form
             item.update(host=t["host"], host_v6=t["host_v6"],
-                        dns_query=t["dns_query"] if t["probe"] == "dns" else "",
                         port=t["port"] if t["probe"] != "ping" else None)
         targets.append(item)
     return {
