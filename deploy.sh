@@ -51,11 +51,16 @@ if [ "${1:-}" = "--status" ]; then
   echo "running:   $(git log -1 --format='%h %s (%cr)' "$CUR")"
   echo "available: $(git log -1 --format='%h %s (%cr)' "$NEW")"
   [ "$CUR" = "$NEW" ] && echo "up to date" || echo "$(git rev-list --count "$CUR..$NEW") new commit(s)"
+  [ -f "$DIR/data/.deploy-failed" ] && echo "last failed deploy: $(cut -c1-7 "$DIR/data/.deploy-failed") (skipped until a newer commit, or use --force)"
   exit 0
 fi
 
 if [ "$CUR" = "$NEW" ] && [ "${1:-}" != "--force" ]; then
   exit 0   # nothing to do (silent, the timer runs this every few minutes)
+fi
+FAILED_FILE="$DIR/data/.deploy-failed"
+if [ "${1:-}" != "--force" ] && [ -f "$FAILED_FILE" ] && [ "$(cat "$FAILED_FILE")" = "$NEW" ]; then
+  exit 0   # this version failed before; wait for a newer commit (or run with --force)
 fi
 
 log "deploying ${CUR:0:7} → ${NEW:0:7} ($MODE)"
@@ -96,6 +101,7 @@ git merge --ff-only --quiet "origin/$BRANCH" || die "can't fast-forward: local c
 
 # 3. Rebuild/restart and check it comes up
 if start && healthy; then
+  rm -f "$FAILED_FILE"
   log "deploy OK: now running ${NEW:0:7}"
   [ "$MODE" = docker ] && docker image prune -f >/dev/null 2>&1 || true
   exit 0
@@ -103,6 +109,7 @@ fi
 
 # 4. Roll back
 log "new version did not start; rolling back to ${CUR:0:7}"
+echo "$NEW" > "$FAILED_FILE"
 git reset --hard --quiet "$CUR"
 if start && healthy; then
   die "deploy of ${NEW:0:7} failed; rolled back to ${CUR:0:7} (database backup: $backup)"
