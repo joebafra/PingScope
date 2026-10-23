@@ -62,6 +62,26 @@ const PS = (() => {
   const med = q => { const k = q.length; return k % 2 ? q[k >> 1] : (q[k / 2 - 1] + q[k / 2]) / 2; };
   function niceCeil(v){ if (!(v > 0)) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1,2,2.5,5,10]) if (m * e >= v) return m * e; return 10 * e; }
 
+  // Y axis, in 4 even, round steps. The top follows the bulk of the pings (90th percentile per bucket),
+  // so a few spikes don't squash the graph; they are cut off at the top, like SmokePing does.
+  // The axis starts at 0, unless every value sits high above it (a steady 8 ms line): then it starts
+  // just below the data, so the graph isn't mostly empty space.
+  function yRange(d){
+    const pts = d.points.filter(p => p.q.length), pick = (a, f) => a[Math.min(a.length - 1, Math.floor(a.length * f))];
+    if (!pts.length) return {ymin: 0, ymax: 10};
+    const his = pts.map(p => pick(p.q, .9)).sort((a, b) => a - b), lows = pts.map(p => p.q[0]).sort((a, b) => a - b);
+    const hi = Math.max(pick(his, .95), 0.01), lo = pick(lows, .05);
+    let step = niceCeil(hi * 1.15 / 4);
+    if (lo > hi * .6){
+      const range = Math.max(hi - lo, hi * .2);
+      for (step = niceCeil(range * 1.3 / 4); ; step = niceCeil(step * 1.01)){
+        const ymin = Math.max(0, Math.floor((lo - range * .15) / step) * step);
+        if (ymin + 4 * step >= hi * 1.1) return {ymin, ymax: ymin + 4 * step};
+      }
+    }
+    return {ymin: 0, ymax: 4 * step};
+  }
+
   function draw(cv, d){
     if (d) cv._d = d; d = cv._d;
     const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
@@ -72,16 +92,15 @@ const PS = (() => {
     c.font = v('--chart-font') || '10px system-ui,sans-serif';
     if (!d){ c.fillStyle = v('--faint'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('Loading…', W / 2, H / 2); return; }
     const L = 50, R = 8, T = 8, B = 18, pw = W - L - R, ph = H - T - B, span = d.end - d.start;
-    const tops = d.points.filter(p => p.q.length).map(p => p.q[p.q.length - 1]).sort((a, b) => a - b);
-    const ymax = niceCeil(tops.length ? tops[Math.min(tops.length - 1, Math.floor(tops.length * .95))] * 1.1 : 10);
-    const X = t => L + (t - d.start) / span * pw, Y = ms => T + ph - Math.min(ms, ymax) / ymax * ph;
+    const {ymin, ymax} = yRange(d);
+    const X = t => L + (t - d.start) / span * pw, Y = ms => T + ph - (Math.min(Math.max(ms, ymin), ymax) - ymin) / (ymax - ymin) * ph;
     cv._g = {L, pw, span};
     const plotBg = v('--plot-bg'), axis = v('--axis'), dash = v('--grid-dash');
     if (plotBg){ c.fillStyle = plotBg; c.fillRect(L, T, pw, ph); }
     c.lineWidth = 1; c.strokeStyle = v('--chart-grid') || v('--grid'); c.fillStyle = v('--muted');
     c.textAlign = 'right'; c.textBaseline = 'middle';
     c.setLineDash(dash ? dash.split(/\s+/).map(Number) : []);
-    for (let i = 0; i <= 4; i++){ const ms = ymax * i / 4, y = Math.round(Y(ms)) + .5; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke(); c.fillText(fmtMs(ms), L - 6, y); }
+    for (let i = 0; i <= 4; i++){ const ms = ymin + (ymax - ymin) * i / 4, y = Math.round(Y(ms)) + .5; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke(); c.fillText(fmtMs(ms), L - 6, y); }
     c.setLineDash([]);
     if (axis){ c.strokeStyle = axis; c.beginPath(); c.moveTo(L + .5, T); c.lineTo(L + .5, T + ph + .5); c.lineTo(W - R, T + ph + .5); c.stroke(); }
     c.textAlign = 'center'; c.textBaseline = 'top';
