@@ -108,6 +108,8 @@ class Store:
         self.c.executescript(SCHEMA)
         if "trigger_loss" not in [r[1] for r in self.c.execute("PRAGMA table_info(mtr)")]:
             self.c.execute("ALTER TABLE mtr ADD COLUMN trigger_loss REAL")
+        if "sort_mode" not in [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]:
+            self.c.execute("ALTER TABLE groups ADD COLUMN sort_mode TEXT NOT NULL DEFAULT 'manual'")
         self.lock = threading.RLock()
         self._settings = None
 
@@ -152,10 +154,10 @@ class Store:
     # ---- groups --------------------------------------------------------------------
 
     def groups(self):
-        return [dict(r) for r in self._q("SELECT id, parent_id, name, sort FROM groups ORDER BY sort, id")]
+        return [dict(r) for r in self._q("SELECT id, parent_id, name, sort, sort_mode FROM groups ORDER BY sort, id")]
 
     def group(self, gid):
-        r = self._one("SELECT id, parent_id, name, sort FROM groups WHERE id=?", (gid,))
+        r = self._one("SELECT id, parent_id, name, sort, sort_mode FROM groups WHERE id=?", (gid,))
         return dict(r) if r else None
 
     def _next_sort(self, table, col, val):
@@ -179,16 +181,22 @@ class Store:
                     todo.append(c)
         return out
 
-    def create_group(self, name, parent_id=None):
+    def create_group(self, name, parent_id=None, sort_mode="manual"):
         name = str(name or "").strip()[:200]
         if not name:
             raise ValueError("Group name is required")
         if parent_id is not None and not self.group(parent_id):
             raise ValueError("Parent group not found")
+        sort_mode = _sort_mode(sort_mode)
         with self.lock, self.c:
-            cur = self.c.execute("INSERT INTO groups(parent_id, name, sort) VALUES (?,?,?)",
-                                 (parent_id, name, self._next_sort("groups", "parent_id", parent_id)))
+            cur = self.c.execute("INSERT INTO groups(parent_id, name, sort, sort_mode) VALUES (?,?,?,?)",
+                                 (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode))
             return cur.lastrowid
+
+    def set_sort_mode(self, gid, sort_mode, include_subgroups=False):
+        ids = [gid, *(self.descendants(gid) if include_subgroups else [])]
+        with self.lock, self.c:
+            self.c.executemany("UPDATE groups SET sort_mode=? WHERE id=?", [(_sort_mode(sort_mode), i) for i in ids])
 
     def update_group(self, gid, name=None, parent_id="keep"):
         g = self.group(gid)
@@ -457,6 +465,13 @@ class Store:
         r = self._one("SELECT * FROM mtr WHERE path=? AND ts BETWEEN ? AND ? ORDER BY ABS(ts-?) LIMIT 1",
                       (path, t - window, t + window, t))
         return self._mtr_row(r) if r else None
+
+
+def _sort_mode(v):
+    v = str(v or "manual").strip().lower()
+    if v not in ("manual", "name"):
+        raise ValueError("Target order must be 'manual' or 'name'")
+    return v
 
 
 def summary(ts, sent, lost, rtts):

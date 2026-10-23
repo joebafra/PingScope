@@ -1,6 +1,6 @@
 /* PingScope admin panel */
 (() => {
-const {$, $$, esc, api, toast, probeBadge, status, fmtMs, fmtLoss, fmtShort, ago, store} = PS;
+const {$, $$, esc, api, sortTargets, toast, probeBadge, status, fmtMs, fmtLoss, fmtShort, ago, store} = PS;
 const main = $('#main');
 const A = {data: null, user: null, tab: 'targets', gid: store.get('psa_gid', 'all'), sel: new Set(), q: '',
            ipv6: null, preview: null, previewText: null};
@@ -151,7 +151,7 @@ function renderTree(){
 }
 function paneTargets(){
   let ts = A.data.targets;
-  if (A.gid !== 'all') ts = ts.filter(t => t.group_id === A.gid);
+  if (A.gid !== 'all') ts = sortTargets(ts.filter(t => t.group_id === A.gid), A.groupMap.get(A.gid)?.sort_mode);
   if (A.q){
     const words = A.q.toLowerCase().split(/\s+/);
     ts = A.data.targets.filter(t => { const hay = [t.name, t.host, t.host_v6, t.dns_query, t.note, pathText(t.group_id)].join(' ').toLowerCase(); return words.every(w => hay.includes(w)); });
@@ -166,7 +166,8 @@ function renderTargetsPane(){
   const focus = document.activeElement?.id === 'tq';
   pane.innerHTML = `<div class="phead"><div style="margin-right:auto;min-width:0">` +
       (g ? `<div class="muted small">${esc(gPath(g.id).slice(0, -1).map(x => x.name).join(' › ') || 'Top level')}</div>` : '') +
-      `<h2 style="margin:0">${g ? esc(g.name) : 'All targets'}</h2></div>` +
+      `<h2 style="margin:0">${g ? esc(g.name) : 'All targets'}</h2>` +
+      (g ? `<div class="muted small">${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
       (g ? `<button class="btn" id="gEdit">Edit group</button><button class="btn" id="gSub">+ Subgroup</button>` : '') +
       `<button class="btn primary" id="tAdd" ${A.data.groups.length ? '' : 'disabled'}>+ Add target</button></div>` +
     `<div class="row" style="margin-bottom:10px"><input id="tq" type="search" placeholder="Search all targets…" value="${esc(A.q)}"></div>` +
@@ -182,14 +183,21 @@ function renderTargetsPane(){
         <td class="hide-sm mono small">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
         <td class="hide-sm mono small">${t.families === 'ipv4' ? '<span class="faint">off</span>' : t.host_v6 ? esc(t.host_v6) : (A.data.series[t.id] || []).some(x => x.family === 6) ? '<span class="faint">via AAAA</span>' : t.host && !/^[\d.]+$/.test(t.host) ? '<span class="faint">no AAAA</span>' : '<span class="faint">—</span>'}</td>
         <td>${seriesHTML(t)}</td>
-        <td class="acts">${!showGroup ? `<button class="btn ghost up" title="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn ghost down" title="Move down" ${i < ts.length - 1 ? '' : 'disabled'}>↓</button>` : ''}<button class="btn sm tedit">Edit</button></td></tr>`).join('')
+        <td class="acts">${!showGroup && g?.sort_mode !== 'name' ? `<button class="btn ghost up" title="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn ghost down" title="Move down" ${i < ts.length - 1 ? '' : 'disabled'}>↓</button>` : ''}<button class="btn sm tedit">Edit</button></td></tr>`).join('')
       : `<tr><td colspan="8" class="empty">${A.q ? 'No targets match.' : g ? 'No targets in this group yet.' : 'No targets yet.'}</td></tr>`) +
     '</tbody></table></div><p class="muted small">Tip: drag targets onto a group to move them.</p>';
   renderBulk();
   const q = $('#tq'); if (focus){ q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   q.oninput = () => { A.q = q.value.trim(); renderTargetsPane(); };
   $('#tAdd').onclick = () => openTarget(null, g ? g.id : (A.data.groups[0] && A.data.groups[0].id));
-  if (g){ $('#gEdit').onclick = () => openGroup(g); $('#gSub').onclick = () => openGroup(null, g.id); }
+  if (g){
+    $('#gEdit').onclick = () => openGroup(g); $('#gSub').onclick = () => openGroup(null, g.id);
+    $('#gSort').onclick = async e => {
+      e.preventDefault();
+      try { await api(`api/admin/groups/${g.id}`, {method: 'PUT', body: {sort_mode: g.sort_mode === 'name' ? 'manual' : 'name'}}); await load(); renderTargetsPane(); }
+      catch(err){ toast(err.message, true); }
+    };
+  }
   $('#selAll').onchange = e => { ts.forEach(t => e.target.checked ? A.sel.add(t.id) : A.sel.delete(t.id)); renderTargetsPane(); };
   pane.querySelector('tbody').onclick = async e => {
     const tr = e.target.closest('tr[data-t]'); if (!tr) return;
@@ -324,6 +332,9 @@ function openGroup(g, parentId){
   gform.name.value = g ? g.name : '';
   gform.parent_id.innerHTML = groupOptions(g ? g.parent_id : parentId, {exclude: g?.id, top: true});
   gform.parent_id.value = (g ? g.parent_id : parentId) ?? '';
+  gform.sort_mode.value = g ? (g.sort_mode || 'manual') : (A.groupMap.get(parentId)?.sort_mode || 'manual');
+  gform.sort_subgroups.checked = false;
+  $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
   let del = $('#gDel');
   if (!del){ del = document.createElement('button'); del.type = 'button'; del.id = 'gDel'; del.className = 'btn danger'; del.style.marginRight = 'auto'; del.textContent = 'Delete group'; gform.querySelector('.dfoot').prepend(del); }
   del.classList.toggle('hidden', !g);
@@ -338,7 +349,8 @@ function openGroup(g, parentId){
 gform.addEventListener('submit', async e => {
   if (e.submitter?.value !== 'save') return;
   e.preventDefault();
-  const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null};
+  const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
+                sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
     else { const r = await api('api/admin/groups', {method: 'POST', body}); A.gid = r.id; store.set('psa_gid', r.id); }

@@ -1,6 +1,6 @@
 /* PingScope dashboard */
 (() => {
-const {$, $$, esc, store, api, fmtMs, fmtLoss, fmtDT, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
+const {$, $$, esc, store, api, sortTargets, fmtMs, fmtLoss, fmtDT, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
 const RANGES = {'3h': 'Last 3 hours', '1d': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days', '1y': 'Last year'};
 const S = {
   data: null, groups: new Map(), kids: new Map(), targets: new Map(), byGroup: new Map(),
@@ -20,6 +20,11 @@ function index(){
     if (!S.byGroup.has(t.group_id)) S.byGroup.set(t.group_id, []);
     S.byGroup.get(t.group_id).push(t);
   }
+  for (const [gid, list] of S.byGroup) S.byGroup.set(gid, sortTargets(list, S.groups.get(gid)?.sort_mode));
+  // "Group order" = tree order, then each group's own target order
+  S.ordered = [];
+  const order = gid => { S.ordered.push(...(S.byGroup.get(gid) || [])); (S.kids.get(gid) || []).forEach(c => order(c.id)); };
+  (S.kids.get(null) || []).forEach(g => order(g.id));
   const memo = new Map();
   const walk = gid => {
     if (memo.has(gid)) return memo.get(gid);
@@ -156,7 +161,7 @@ function fillOverview(problemsOnly){
     `<div class="tile"><b style="color:var(--warn)">${cnt('loss')}</b><span>with packet loss</span></div>` +
     `<div class="tile"><b style="color:var(--bad)">${cnt('down')}</b><span>down or unresolved</span></div>` +
     `<div class="tile"><b>${all.length ? Math.round(with6 / all.length * 100) : 0}%</b><span>IPv6 coverage · ${with6} of ${all.length}</span><div class="bar"><i style="width:${all.length ? with6 / all.length * 100 : 0}%"></i></div></div>`;
-  let rows = all.filter(matches);
+  let rows = (S.ordered || all).filter(matches);
   if (problemsOnly) rows = rows.filter(t => ['loss', 'down'].includes(tStatus(t)));
   const rank = {down: 3, loss: 2, unknown: 1, ok: 0};
   const maxLoss = t => Math.max(0, ...t.series.map(s => s.error ? 100 : s.last?.loss ?? 0));

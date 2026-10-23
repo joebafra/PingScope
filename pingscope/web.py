@@ -296,7 +296,7 @@ def admin_data():
 @admin.post("/groups")
 def create_group(body: dict = Body(...)):
     try:
-        gid = store.create_group(body.get("name"), body.get("parent_id"))
+        gid = store.create_group(body.get("name"), body.get("parent_id"), body.get("sort_mode") or "manual")
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -306,6 +306,8 @@ def create_group(body: dict = Body(...)):
 def update_group(gid: int, body: dict = Body(...)):
     try:
         store.update_group(gid, body.get("name"), body.get("parent_id", "keep"))
+        if body.get("sort_mode"):
+            store.set_sort_mode(gid, body["sort_mode"], bool(body.get("sort_subgroups")))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:

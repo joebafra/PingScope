@@ -146,6 +146,12 @@ const PS = (() => {
   addEventListener('resize', (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => $$('canvas.chart').forEach(c => draw(c)), 150); }; })());
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => $$('canvas.chart').forEach(c => draw(c)));
 
-  return {$, $$, esc, store, api, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
+  // Order targets of one group: by name (natural A→Z, ping before dns before tcp) or by manual order
+  const PROBE_ORDER = {ping: 0, dns: 1, tcp: 2};
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}) ||
+    (PROBE_ORDER[a.probe] ?? 9) - (PROBE_ORDER[b.probe] ?? 9) || a.id - b.id;
+  const sortTargets = (list, mode) => mode === 'name' ? list.slice().sort(byName) : list;
+
+  return {$, $$, esc, store, api, sortTargets, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
           med, draw, chartStats, hookChart, legendHTML, LOCALE};
 })();
