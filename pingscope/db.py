@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS mtr(
   loss REAL, hops INTEGER, hubs TEXT NOT NULL, error TEXT);
 CREATE INDEX IF NOT EXISTS mtr_path_ts ON mtr(path, ts);
 CREATE TABLE IF NOT EXISTS users(
-  id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL COLLATE NOCASE, pw_hash TEXT NOT NULL, created INTEGER NOT NULL);
+  id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL COLLATE NOCASE, pw_hash TEXT NOT NULL, created INTEGER NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin');
 CREATE TABLE IF NOT EXISTS sessions(
   token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
@@ -96,6 +97,9 @@ def verify_password(pw, stored):
         return False
 
 
+# admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
+ROLES = ("admin", "viewer")
+
 class Store:
     def __init__(self, path):
         d = os.path.dirname(os.path.abspath(path))
@@ -112,6 +116,8 @@ class Store:
             self.c.execute("ALTER TABLE groups ADD COLUMN sort_mode TEXT NOT NULL DEFAULT 'manual'")
         if "hidden" not in [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]:
             self.c.execute("ALTER TABLE groups ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+        if "role" not in [r[1] for r in self.c.execute("PRAGMA table_info(users)")]:
+            self.c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")  # existing users stay admin
         self.lock = threading.RLock()
         self._settings = None
 
@@ -322,21 +328,26 @@ class Store:
     # ---- users & sessions -----------------------------------------------------------
 
     def users(self):
-        return [dict(r) for r in self._q("SELECT id, username, created FROM users ORDER BY username")]
+        return [dict(r) for r in self._q("SELECT id, username, created, role FROM users ORDER BY username")]
+
+    def admin_count(self):
+        return self._one("SELECT COUNT(*) FROM users WHERE role='admin'")[0]
 
     def user_count(self):
         return self._one("SELECT COUNT(*) FROM users")[0]
 
-    def create_user(self, username, password):
+    def create_user(self, username, password, role="admin"):
         username = str(username or "").strip()
+        if role not in ROLES:
+            raise ValueError("Role must be admin or viewer")
         if not username or len(username) > 64:
             raise ValueError("Username is required (max 64 characters)")
         if len(password or "") < 10:
             raise ValueError("Password must be at least 10 characters")
         try:
             with self.lock, self.c:
-                cur = self.c.execute("INSERT INTO users(username, pw_hash, created) VALUES (?,?,?)",
-                                     (username, hash_password(password), int(time.time())))
+                cur = self.c.execute("INSERT INTO users(username, pw_hash, created, role) VALUES (?,?,?,?)",
+                                     (username, hash_password(password), int(time.time()), role))
                 return cur.lastrowid
         except sqlite3.IntegrityError:
             raise ValueError("That username already exists")
@@ -348,14 +359,20 @@ class Store:
             self.c.execute("UPDATE users SET pw_hash=? WHERE id=?", (hash_password(password), uid))
             self.c.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
 
+    def set_role(self, uid, role):
+        if role not in ROLES:
+            raise ValueError("Role must be admin or viewer")
+        with self.lock, self.c:
+            self.c.execute("UPDATE users SET role=? WHERE id=?", (role, uid))
+
     def delete_user(self, uid):
         with self.lock, self.c:
             self.c.execute("DELETE FROM users WHERE id=?", (uid,))
 
     def check_login(self, username, password):
-        r = self._one("SELECT id, username, pw_hash FROM users WHERE username=?", (str(username or "").strip(),))
+        r = self._one("SELECT id, username, pw_hash, role FROM users WHERE username=?", (str(username or "").strip(),))
         if r and verify_password(password or "", r["pw_hash"]):
-            return {"id": r["id"], "username": r["username"]}
+            return {"id": r["id"], "username": r["username"], "role": r["role"]}
         if not r:
             verify_password("x", hash_password("timing"))  # even out timing
         return None
@@ -372,7 +389,7 @@ class Store:
     def session_user(self, token):
         if not token:
             return None
-        r = self._one("SELECT u.id, u.username FROM sessions s JOIN users u ON u.id=s.user_id "
+        r = self._one("SELECT u.id, u.username, u.role FROM sessions s JOIN users u ON u.id=s.user_id "
                       "WHERE s.token=? AND s.expires>?", (self._tok(token), int(time.time())))
         return dict(r) if r else None
 

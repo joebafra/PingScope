@@ -80,10 +80,16 @@ def require_user(request: Request):
     return u
 
 
-def require_admin(request: Request):
-    u = require_user(request)
+def _csrf(request):
     if request.method not in ("GET", "HEAD") and request.headers.get("x-pingscope") != "1":
         raise HTTPException(403, "Missing request header")  # CSRF protection
+
+
+def require_admin(request: Request):
+    u = require_user(request)
+    if u["role"] != "admin":
+        raise HTTPException(403, "Your account has view-only access")
+    _csrf(request)
     return u
 
 
@@ -196,7 +202,7 @@ def setup(request: Request, response: Response, body: dict = Body(...)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     STATE["setup_code"] = None
-    user = {"id": uid, "username": body.get("username").strip()}
+    user = {"id": uid, "username": body.get("username").strip(), "role": "admin"}
     _login(request, response, user)
     return {"user": user}
 
@@ -228,7 +234,8 @@ def _find_series(key):
 @app.get("/api/tree")
 def tree(request: Request, _=Depends(can_view)):
     s = store.settings()
-    admin = current_user(request) is not None
+    user = current_user(request)
+    admin = user is not None  # admins and viewers see the same dashboard; only admins get edit links
     groups = store.groups()
     if not admin:  # hidden groups (and everything below them) don't exist for visitors
         groups = [g for g in groups if not g["hidden_effective"]]
@@ -254,7 +261,7 @@ def tree(request: Request, _=Depends(can_view)):
         "probes": {k: p.label for k, p in PROBES.items()},
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
         "mtr": bool(s["mtr_enabled"] and collector.mtr.available), "mtr_interval": s["mtr_interval"],
-        "logged_in": admin,
+        "logged_in": admin, "can_edit": bool(user and user["role"] == "admin"),
     }
 
 
@@ -633,9 +640,21 @@ def users():
 @admin.post("/users")
 def add_user(body: dict = Body(...)):
     try:
-        return {"id": store.create_user(body.get("username"), body.get("password"))}
+        return {"id": store.create_user(body.get("username"), body.get("password"), body.get("role") or "admin")}
     except ValueError as e:
         raise _bad(e)
+
+
+@admin.put("/users/{uid}")
+def update_user(uid: int, body: dict = Body(...), user=Depends(require_admin)):
+    role = body.get("role")
+    if uid == user["id"] and role != "admin":
+        raise HTTPException(400, "You can't take admin rights away from your own account")
+    try:
+        store.set_role(uid, role)
+    except ValueError as e:
+        raise _bad(e)
+    return {"ok": True}
 
 
 @admin.delete("/users/{uid}")
@@ -646,8 +665,14 @@ def delete_user(uid: int, user=Depends(require_admin)):
     return {"ok": True}
 
 
-@admin.post("/password")
-def change_password(request: Request, response: Response, body: dict = Body(...), user=Depends(require_admin)):
+def require_user_csrf(request: Request):
+    u = require_user(request)
+    _csrf(request)
+    return u
+
+
+@app.post("/api/password")  # every user (admin or viewer) can change their own password
+def change_password(request: Request, response: Response, body: dict = Body(...), user=Depends(require_user_csrf)):
     if not store.check_login(user["username"], body.get("current")):
         raise HTTPException(400, "Current password is wrong")
     try:

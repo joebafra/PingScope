@@ -243,7 +243,7 @@ function famBox(t, f, range, big, onPick){
       : t.host && /^[\d.]+$/.test(t.host) ? 'No IPv6 address configured' : 'No AAAA record found')
       : (t.families === 'ipv6' || !priv ? 'Not measured over IPv4' : 'No IPv4 address');
     box.innerHTML = `<div class="clabel"><span class="badge">IPv${f}</span></div><div class="nofam"><span>${why}</span>` +
-      (S.data.logged_in && f === 6 && t.families !== 'ipv4' ? `<a href="admin#edit=${t.id}">Add IPv6 address</a>` : '') + '</div>';
+      (S.data.can_edit && f === 6 && t.families !== 'ipv4' ? `<a href="admin#edit=${t.id}">Add IPv6 address</a>` : '') + '</div>';
     return box;
   }
   box.innerHTML = `<div class="clabel"><span class="badge">IPv${f}</span>${s.address ? `<span class="addr">${esc(s.address)}</span>` : ''}` +
@@ -268,7 +268,7 @@ function viewTarget(tid){
   main.innerHTML =
     `<div class="crumbs"><a href="#/">Overview</a>${path.map(p => ` › <a href="#/g/${p.id}">${esc(p.name)}</a>`).join('')}</div>` +
     `<div class="row" style="flex-wrap:wrap"><h1 style="margin:0">${esc(t.name)}</h1>${probeBadge(t.probe, S.data.probes[t.probe])}` +
-    (S.data.logged_in ? `<a class="btn sm" href="admin#edit=${t.id}" style="margin-left:auto">Edit</a>` : '') + '</div>' +
+    (S.data.can_edit ? `<a class="btn sm" href="admin#edit=${t.id}" style="margin-left:auto">Edit</a>` : '') + '</div>' +
     (t.host !== undefined ? `<div class="info">` +
       (t.host ? `<span>Host <b>${esc(t.host)}</b></span>` : '') +
       (s4 ? `<span>IPv4 <b>${esc(s4.address || 'unresolved')}</b></span>` : '') +
@@ -411,7 +411,7 @@ async function refresh(first){
     }
     $('#siteTitle').textContent = d.site.title;
     $('#status').textContent = d.last_run ? 'updated ' + ago(d.last_run) : 'waiting for first round…';
-    $('#adminLink').textContent = d.logged_in ? 'Admin' : 'Log in';
+    $('#adminLink').textContent = d.can_edit ? 'Admin' : d.logged_in ? 'Account' : 'Log in';
     const sig = d.targets.map(t => t.id + ':' + t.series.map(s => s.key + (s.address || '')).join(',')).join('|') + '#' + d.groups.map(g => g.id + g.name + g.parent_id).join(',');
     const changed = sig !== S.sig; S.sig = sig;
     if (first || changed) return route();

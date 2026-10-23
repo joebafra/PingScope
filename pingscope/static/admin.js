@@ -27,15 +27,17 @@ function authCard(title, sub, fields, btn, onSubmit){
   };
   $('#authf input').focus();
 }
-function afterLogin(){
+function afterLogin(r){
   const next = new URLSearchParams(location.search).get('next');
-  if (next) location.href = './' + next; else location.reload();
+  if (next) location.href = './' + next;
+  else if (r?.user?.role === 'viewer') location.href = './';  // viewers have nothing to do here
+  else location.reload();
 }
 function renderLogin(){
   authCard('Log in', 'Log in to manage targets and settings.',
     `<label class="field"><span>Username</span><input name="username" autocomplete="username" required></label>
      <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>`,
-    'Log in', async fd => { await api('api/login', {method: 'POST', body: fd}); afterLogin(); });
+    'Log in', async fd => { afterLogin(await api('api/login', {method: 'POST', body: fd})); });
 }
 function renderSetup(){
   authCard('Welcome to PingScope', 'Create the first admin account. The setup code is printed in the PingScope log (<code>docker logs pingscope</code>).',
@@ -48,7 +50,9 @@ $('#logout').onclick = async () => { await api('api/logout', {method: 'POST'}); 
 
 async function start(){
   $('#who').textContent = A.user.username; $('#who').classList.remove('hidden');
-  $('#logout').classList.remove('hidden'); $('#tabs').classList.remove('hidden');
+  $('#logout').classList.remove('hidden');
+  if (A.user.role !== 'admin') return viewAccount();
+  $('#tabs').classList.remove('hidden');
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) location.hash = b.dataset.tab; };
   await load();
   route();
@@ -70,7 +74,7 @@ function route(){
   if (h.startsWith('edit=')) tab = 'targets';
   if (!['targets', 'ipv6', 'import', 'settings', 'users'].includes(tab)) tab = 'targets';
   A.tab = tab;
-  main.onclick = null;
+  main.onclick = null; main.onchange = null;
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   ({targets: viewTargets, ipv6: viewIpv6, import: viewImport, settings: viewSettings, users: viewUsers})[tab]();
   const m = h.match(/^edit=(\d+)/);
@@ -583,17 +587,47 @@ async function loadHttps(){
 }
 
 // ---------- users ----------
+const ROLE_OPTS = [['viewer', 'Viewer'], ['admin', 'Admin']];
+const PW_CARD = `<div class="card pad"><h2>Change your password</h2>`;
+function bindPassword(){
+  $('#pform').onsubmit = async e => {
+    e.preventDefault();
+    try { await api('api/password', {method: 'POST', body: Object.fromEntries(new FormData(e.target))}); toast('Password changed'); e.target.reset(); }
+    catch(err){ toast(err.message, true); }
+  };
+}
+function pwForm(){
+  return `${PW_CARD}<form id="pform" style="margin-top:12px;max-width:360px">
+      <label class="field"><span>Current password</span><input name="current" type="password" autocomplete="current-password" required></label>
+      <label class="field"><span>New password <span class="faint">(min. 10 characters)</span></span><input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
+      <button class="btn primary">Change password</button></form></div>`;
+}
+// viewers: no admin tabs, only their own account
+function viewAccount(){
+  $('#tabs').classList.add('hidden');
+  $('.brand small').textContent = 'Account';
+  main.innerHTML = `<div style="max-width:760px">
+    <div class="card pad" style="margin-bottom:16px"><h2>View-only account</h2>
+    <p class="muted" style="margin:6px 0 12px">You are logged in as <b>${esc(A.user.username)}</b>. You can see everything on the dashboard, including hostnames, IP addresses, traceroute hops and hidden groups, but you can't change targets or settings.</p>
+    <a class="btn primary" href="./">Go to the dashboard</a></div>
+    ${pwForm()}</div>`;
+  bindPassword();
+}
 async function viewUsers(){
   const {users} = await api('api/admin/users');
   main.innerHTML = `<div style="max-width:760px">
-    <div class="card pad" style="margin-bottom:16px"><h2>Users</h2><p class="muted small" style="margin:4px 0 12px">Every user has full admin access.</p>
-    <div class="tblwrap"><table class="tbl"><thead><tr><th>Username</th><th>Created</th><th></th></tr></thead><tbody>
-    ${users.map(u => `<tr><td><b>${esc(u.username)}</b>${u.id === A.user.id ? ' <span class="badge">you</span>' : ''}</td><td class="muted">${fmtShort(u.created)}</td>
+    <div class="card pad" style="margin-bottom:16px"><h2>Users</h2><p class="muted small" style="margin:4px 0 12px"><b>Admin</b>: full access to this admin panel. <b>Viewer</b>: view-only; sees the dashboard with hostnames, IP addresses, traceroute hops and hidden groups, but can't change anything.</p>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Username</th><th>Role</th><th>Created</th><th></th></tr></thead><tbody>
+    ${users.map(u => `<tr><td><b>${esc(u.username)}</b>${u.id === A.user.id ? ' <span class="badge">you</span>' : ''}</td>
+      <td>${u.id === A.user.id ? 'Admin' : `<select data-role="${u.id}" style="width:auto">${ROLE_OPTS.map(([v, l]) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`}</td>
+      <td class="muted">${fmtShort(u.created)}</td>
       <td class="acts">${u.id === A.user.id ? '' : `<button class="btn sm danger" data-del="${u.id}" data-name="${esc(u.username)}">Delete</button>`}</td></tr>`).join('')}
     </tbody></table></div>
     <form id="uform" class="row" style="margin-top:12px;flex-wrap:wrap"><input name="username" placeholder="Username" required style="flex:1;min-width:140px">
-      <input name="password" type="password" placeholder="Password (min. 10)" minlength="10" required autocomplete="new-password" style="flex:1;min-width:160px"><button class="btn">Add user</button></form></div>
-    <div class="card pad"><h2>Change your password</h2>
+      <input name="password" type="password" placeholder="Password (min. 10)" minlength="10" required autocomplete="new-password" style="flex:1;min-width:160px">
+      <select name="role" style="width:auto">${ROLE_OPTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+      <button class="btn">Add user</button></form></div>
+    ${PW_CARD}
     <form id="pform" style="margin-top:12px;max-width:360px">
       <label class="field"><span>Current password</span><input name="current" type="password" autocomplete="current-password" required></label>
       <label class="field"><span>New password <span class="faint">(min. 10 characters)</span></span><input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
@@ -603,16 +637,17 @@ async function viewUsers(){
     if (!confirm(`Delete user "${b.dataset.name}"?`)) return;
     try { await api(`api/admin/users/${b.dataset.del}`, {method: 'DELETE'}); toast('User deleted'); viewUsers(); } catch(err){ toast(err.message, true); }
   };
+  main.onchange = async e => {
+    const s = e.target.closest('[data-role]'); if (!s) return;
+    try { await api(`api/admin/users/${s.dataset.role}`, {method: 'PUT', body: {role: s.value}}); toast('Role changed'); }
+    catch(err){ toast(err.message, true); viewUsers(); }
+  };
   $('#uform').onsubmit = async e => {
     e.preventDefault();
     try { await api('api/admin/users', {method: 'POST', body: Object.fromEntries(new FormData(e.target))}); toast('User added'); viewUsers(); }
     catch(err){ toast(err.message, true); }
   };
-  $('#pform').onsubmit = async e => {
-    e.preventDefault();
-    try { await api('api/admin/password', {method: 'POST', body: Object.fromEntries(new FormData(e.target))}); toast('Password changed'); e.target.reset(); }
-    catch(err){ toast(err.message, true); }
-  };
+  bindPassword();
 }
 
 boot().catch(e => { main.innerHTML = `<div class="empty">Could not load: ${esc(e.message)}</div>`; });
