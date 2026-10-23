@@ -43,6 +43,7 @@ The installer asks for your hostname and email. It sets up Docker, the **Let's E
 - Full guide: **[docs/INSTALL.md](docs/INSTALL.md)**.
 - How SSL works and how to change the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**.
 - Certificate status: **Admin → Settings → HTTPS / SSL certificate**.
+- **Automatic deploy:** the server checks GitHub every 5 minutes. A new version on `main` is installed with a database backup first, and rolled back automatically if it doesn't start. See [Automatic updates](docs/INSTALL.md#automatic-updates-deploy-from-github).
 
 ## Built with
 

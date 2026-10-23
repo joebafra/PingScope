@@ -25,6 +25,10 @@ KEEP_BACKUPS=${PINGSCOPE_KEEP_BACKUPS:-5}
 HEALTH_TIMEOUT=${PINGSCOPE_HEALTH_TIMEOUT:-120}
 cd "$DIR"
 
+# Never wait for a password or host-key prompt (the timer runs unattended)
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
+
 log() { echo "$(date '+%F %T') $*"; }
 die() { log "ERROR: $*"; exit 1; }
 

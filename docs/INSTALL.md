@@ -271,12 +271,62 @@ Run the installer and leave the hostname empty. PingScope then listens on `http:
 
 ## 5. Updating, backups and useful commands
 
-### Updating
+### Automatic updates (deploy from GitHub)
+
+When something new is pushed to the `main` branch on GitHub, the server installs it automatically. The installer asks whether to enable this.
+
+A systemd timer runs `deploy.sh` every 5 minutes. The script:
+
+1. Checks GitHub for new commits on `main`. If there are none, it stops right away.
+2. Makes a **backup of the database** in `data/backups/`. The last 5 are kept.
+3. Pulls the new code and **rebuilds/restarts** PingScope.
+4. Checks that PingScope responds again (health check, up to 2 minutes).
+5. If the new version doesn't start, it **rolls back** to the previous version automatically. It then skips that broken version until a newer commit arrives.
+
+Your settings (`.env`) and data (`data/`) are never touched by git.
+
+Requirement: the server reads the repository with a deploy key ([section 2](#2-github-access-with-an-ssh-deploy-key)), because the timer can't type a password.
+
+```bash
+sudo ./deploy.sh --status                         # running version vs. available version
+sudo ./deploy.sh                                  # deploy now instead of waiting for the timer
+sudo ./deploy.sh --force                          # rebuild/restart even without changes, or retry a failed version
+sudo journalctl -u pingscope-deploy -n 50         # deploy log
+sudo systemctl list-timers pingscope-deploy.timer # when the next check runs
+```
+
+To enable it later:
 
 ```bash
 cd /opt/pingscope
-sudo git pull
-sudo docker compose up -d --build
+sudo cp deploy/pingscope-deploy.service deploy/pingscope-deploy.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pingscope-deploy.timer
+```
+
+To turn it off:
+
+```bash
+sudo systemctl disable --now pingscope-deploy.timer
+```
+
+You can also run `sudo ./install.sh` again. `deploy.sh` works the same way for the install without Docker ([section 6](#6-install-without-docker)).
+
+> **Tip:** to try changes before they go live, work on a separate branch and merge into `main` when you're ready. Only `main` is deployed. To deploy another branch on a test server, set `Environment=PINGSCOPE_BRANCH=<branch>` in the service file.
+
+### Updating manually
+
+If you don't use automatic updates:
+
+```bash
+cd /opt/pingscope
+sudo ./deploy.sh
+```
+
+This includes the backup and rollback. Without the script:
+
+```bash
+sudo git pull && sudo docker compose up -d --build
 ```
 
 Your data in `/opt/pingscope/data` (database and certificates) is kept.
@@ -372,12 +422,7 @@ Caddy fetches the Let's Encrypt certificate, renews it automatically, and redire
 
 ### 6.4 Updating
 
-```bash
-cd /opt/pingscope
-sudo git pull
-sudo venv/bin/pip install -r requirements.txt
-sudo systemctl restart pingscope
-```
+Run `sudo ./deploy.sh` (with backup and rollback). Or enable automatic updates with the timer as described in [section 5](#automatic-updates-deploy-from-github). The deploy script detects the installation without Docker by itself.
 
 ---
 
@@ -405,6 +450,7 @@ Certificates are then handled by that web server (for example with certbot). If 
 | Browser warning / no certificate | **Admin → Settings → HTTPS** and `sudo docker logs pingscope-caddy`. Usually the DNS record doesn't point to the server yet, or port 80 is blocked (also check the hosting provider's firewall). |
 | "too many certificates already issued" | Let's Encrypt rate limit: wait a few days, or use staging while testing ([4.5](#45-experimenting-use-lets-encrypt-staging-optional)). |
 | `git clone`: Permission denied (publickey) | The deploy key isn't added on GitHub, or `/root/.ssh/config` doesn't point to it. Test with `sudo ssh -T git@github.com`. |
+| A new version on GitHub isn't installed | `sudo ./deploy.sh --status` and `sudo journalctl -u pingscope-deploy -n 50`. If that version failed before, it is skipped until a newer commit (or run `sudo ./deploy.sh --force`). |
 | All IPv6 graphs are down | Does the server have IPv6? `ping -6 2001:4860:4860::8888` |
 | Ping targets all down, DNS targets fine | The container needs `NET_RAW` (already in docker-compose.yml). Check `sudo docker logs pingscope`. |
 | Forgot admin password | `sudo docker exec -it pingscope python -m pingscope create-admin` creates a new admin. |

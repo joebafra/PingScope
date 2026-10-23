@@ -88,7 +88,23 @@ bold "Building and starting PingScope…"
 docker compose up -d --build
 [ -z "$domain" ] && docker rm -f pingscope-caddy >/dev/null 2>&1 || true
 
-# 5. Setup code
+# 5. Automatic updates from GitHub
+echo
+read -rp "Install new versions from GitHub automatically (checked every 5 minutes)? [Y/n] " a
+if [[ "${a:-Y}" =~ ^[Yy]$ ]]; then
+  if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" git ls-remote origin -q >/dev/null 2>&1; then
+    sed "s#/opt/pingscope#$PWD#g" deploy/pingscope-deploy.service > /etc/systemd/system/pingscope-deploy.service
+    cp deploy/pingscope-deploy.timer /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now pingscope-deploy.timer >/dev/null 2>&1
+    ok "Automatic updates enabled (log: journalctl -u pingscope-deploy)"
+  else
+    warn "This server can't read the GitHub repository without a password prompt."
+    warn "Set up an SSH deploy key first (docs/INSTALL.md, section 2), then run ./install.sh again."
+  fi
+fi
+
+# 6. Setup code
 echo
 session=""
 for _ in $(seq 1 60); do
