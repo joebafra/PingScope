@@ -208,6 +208,14 @@ def _series_json(x, private=True):
             "last": collector.latest.get(x.key)}
 
 
+def _visible_to(request, tid):
+    """Visitors may only read enabled targets outside hidden groups; logged-in admins may read everything."""
+    if current_user(request):
+        return True
+    t = store.target(tid)
+    return bool(t and t["enabled"] and t["group_id"] not in store.hidden_group_ids())
+
+
 def _find_series(key):
     tid = int(key.split("-")[0])
     return next((x for x in collector.series.get(tid, []) if x.key == key), None)
@@ -217,8 +225,17 @@ def _find_series(key):
 def tree(request: Request, _=Depends(can_view)):
     s = store.settings()
     admin = current_user(request) is not None
+    groups = store.groups()
+    if not admin:  # hidden groups (and everything below them) don't exist for visitors
+        groups = [g for g in groups if not g["hidden_effective"]]
+        for g in groups:
+            g.pop("hidden", None)
+            g.pop("hidden_effective", None)
+    visible = {g["id"] for g in groups}
     targets = []
     for t in store.targets(enabled_only=True):
+        if t["group_id"] not in visible:
+            continue
         item = {
             "id": t["id"], "group_id": t["group_id"], "name": t["name"], "probe": t["probe"], "families": t["families"],
             "series": [_series_json(x, admin) for x in collector.series.get(t["id"], [])],
@@ -229,7 +246,7 @@ def tree(request: Request, _=Depends(can_view)):
         targets.append(item)
     return {
         "site": {"title": s["site_title"], "remark": s["site_remark"]},
-        "groups": store.groups(), "targets": targets,
+        "groups": groups, "targets": targets,
         "probes": {k: p.label for k, p in PROBES.items()},
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
         "mtr": bool(s["mtr_enabled"] and collector.mtr.available), "mtr_interval": s["mtr_interval"],
@@ -238,9 +255,12 @@ def tree(request: Request, _=Depends(can_view)):
 
 
 @app.get("/api/series")
-def series(key: str, range: str = "1d", points: int = Query(600, ge=50, le=2000), _=Depends(can_view)):
+def series(request: Request, key: str, range: str = "1d", points: int = Query(600, ge=50, le=2000),
+           _=Depends(can_view)):
     if not SERIES_RE.match(key):
         raise HTTPException(400, "Invalid series")
+    if not _visible_to(request, int(key.split("-")[0])):
+        raise HTTPException(404, "Not found")
     if range not in RANGES:
         raise HTTPException(400, "Unknown range")
     s = store.settings()
@@ -276,6 +296,8 @@ def mtr(request: Request, key: str, before: int | None = None, since: int | None
         limit: int = Query(30, ge=1, le=500), only_issues: bool = False, _=Depends(can_view)):
     if not SERIES_RE.match(key):
         raise HTTPException(400, "Invalid series")
+    if not _visible_to(request, int(key.split("-")[0])):
+        raise HTTPException(404, "Not found")
     x = _find_series(key)
     if not x or not x.path:
         return {"runs": [], "more": False}
@@ -320,7 +342,8 @@ def admin_data():
 @admin.post("/groups")
 def create_group(body: dict = Body(...)):
     try:
-        gid = store.create_group(body.get("name"), body.get("parent_id"), body.get("sort_mode") or "manual")
+        gid = store.create_group(body.get("name"), body.get("parent_id"), body.get("sort_mode") or "manual",
+                                 bool(body.get("hidden")))
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -332,6 +355,8 @@ def update_group(gid: int, body: dict = Body(...)):
         store.update_group(gid, body.get("name"), body.get("parent_id", "keep"))
         if body.get("sort_mode"):
             store.set_sort_mode(gid, body["sort_mode"], bool(body.get("sort_subgroups")))
+        if "hidden" in body:
+            store.set_hidden(gid, bool(body["hidden"]))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:

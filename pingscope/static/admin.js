@@ -125,7 +125,7 @@ function viewTargets(){
 function renderTree(){
   const box = $('#gtree'); if (!box) return;
   const count = gid => { const ids = new Set([gid, ...descendants(gid)]); return A.data.targets.filter(t => ids.has(t.group_id)).length; };
-  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"><span class="name">${esc(g.name)}</span><span class="cnt">${count(g.id)}</span></a>` +
+  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
     (kids(g.id).length ? `<ul>${kids(g.id).map(node).join('')}</ul>` : '') + '</li>';
   box.innerHTML = `<div class="row" style="padding:2px 4px 8px"><b class="grow">Groups</b><button class="btn sm" id="addTop">+ Group</button></div>` +
     `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>${kids(null).map(node).join('')}</ul>` +
@@ -167,7 +167,7 @@ function renderTargetsPane(){
   pane.innerHTML = `<div class="phead"><div style="margin-right:auto;min-width:0">` +
       (g ? `<div class="muted small">${esc(gPath(g.id).slice(0, -1).map(x => x.name).join(' › ') || 'Top level')}</div>` : '') +
       `<h2 style="margin:0">${g ? esc(g.name) : 'All targets'}</h2>` +
-      (g ? `<div class="muted small">${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
+      (g ? `<div class="muted small">${g.hidden_effective ? '🔒 Hidden from visitors · ' : ''}${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
       (g ? `<button class="btn" id="gEdit">Edit group</button><button class="btn" id="gSub">+ Subgroup</button>` : '') +
       `<button class="btn primary" id="tAdd" ${A.data.groups.length ? '' : 'disabled'}>+ Add target</button></div>` +
     `<div class="row" style="margin-bottom:10px"><input id="tq" type="search" placeholder="Search all targets…" value="${esc(A.q)}"></div>` +
@@ -334,6 +334,7 @@ function openGroup(g, parentId){
   gform.parent_id.value = (g ? g.parent_id : parentId) ?? '';
   gform.sort_mode.value = g ? (g.sort_mode || 'manual') : (A.groupMap.get(parentId)?.sort_mode || 'manual');
   gform.sort_subgroups.checked = false;
+  gform.hidden.checked = !!(g && g.hidden);
   $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
   let del = $('#gDel');
   if (!del){ del = document.createElement('button'); del.type = 'button'; del.id = 'gDel'; del.className = 'btn danger'; del.style.marginRight = 'auto'; del.textContent = 'Delete group'; gform.querySelector('.dfoot').prepend(del); }
@@ -350,7 +351,7 @@ gform.addEventListener('submit', async e => {
   if (e.submitter?.value !== 'save') return;
   e.preventDefault();
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
-                sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked};
+                sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
     else { const r = await api('api/admin/groups', {method: 'POST', body}); A.gid = r.id; store.set('psa_gid', r.id); }

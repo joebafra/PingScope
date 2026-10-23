@@ -110,6 +110,8 @@ class Store:
             self.c.execute("ALTER TABLE mtr ADD COLUMN trigger_loss REAL")
         if "sort_mode" not in [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]:
             self.c.execute("ALTER TABLE groups ADD COLUMN sort_mode TEXT NOT NULL DEFAULT 'manual'")
+        if "hidden" not in [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]:
+            self.c.execute("ALTER TABLE groups ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
         self.lock = threading.RLock()
         self._settings = None
 
@@ -154,10 +156,25 @@ class Store:
     # ---- groups --------------------------------------------------------------------
 
     def groups(self):
-        return [dict(r) for r in self._q("SELECT id, parent_id, name, sort, sort_mode FROM groups ORDER BY sort, id")]
+        out = [dict(r) for r in self._q("SELECT id, parent_id, name, sort, sort_mode, hidden FROM groups ORDER BY sort, id")]
+        by = {g["id"]: g for g in out}
+        for g in out:  # effective visibility: a group is hidden when it or any parent group is hidden
+            g["hidden"] = bool(g["hidden"])
+            p, hid = g["parent_id"], g["hidden"]
+            while p in by and not hid:
+                hid, p = bool(by[p]["hidden"]), by[p]["parent_id"]
+            g["hidden_effective"] = hid
+        return out
+
+    def hidden_group_ids(self):
+        return {g["id"] for g in self.groups() if g["hidden_effective"]}
+
+    def set_hidden(self, gid, hidden):
+        with self.lock, self.c:
+            self.c.execute("UPDATE groups SET hidden=? WHERE id=?", (1 if hidden else 0, gid))
 
     def group(self, gid):
-        r = self._one("SELECT id, parent_id, name, sort, sort_mode FROM groups WHERE id=?", (gid,))
+        r = self._one("SELECT id, parent_id, name, sort, sort_mode, hidden FROM groups WHERE id=?", (gid,))
         return dict(r) if r else None
 
     def _next_sort(self, table, col, val):
@@ -181,7 +198,7 @@ class Store:
                     todo.append(c)
         return out
 
-    def create_group(self, name, parent_id=None, sort_mode="manual"):
+    def create_group(self, name, parent_id=None, sort_mode="manual", hidden=False):
         name = str(name or "").strip()[:200]
         if not name:
             raise ValueError("Group name is required")
@@ -189,8 +206,8 @@ class Store:
             raise ValueError("Parent group not found")
         sort_mode = _sort_mode(sort_mode)
         with self.lock, self.c:
-            cur = self.c.execute("INSERT INTO groups(parent_id, name, sort, sort_mode) VALUES (?,?,?,?)",
-                                 (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode))
+            cur = self.c.execute("INSERT INTO groups(parent_id, name, sort, sort_mode, hidden) VALUES (?,?,?,?,?)",
+                                 (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode, 1 if hidden else 0))
             return cur.lastrowid
 
     def set_sort_mode(self, gid, sort_mode, include_subgroups=False):

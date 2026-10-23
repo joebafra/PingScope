@@ -66,7 +66,7 @@ function renderNav(){
     const st = worst(g._all.flatMap(t => t.series.filter(s => S.fam === 'all' || s.family === +S.fam).map(status)));
     return `<li class="${open ? 'open' : ''}" data-g="${g.id}"><a href="#/g/${g.id}" class="${sel === g.id ? 'on' : ''}">` +
       `<span class="caret" data-toggle="${g.id}">${ch.length ? '▸' : ''}</span><span class="dot ${st}"></span>` +
-      `<span class="name">${esc(g.name)}</span><span class="cnt">${g._all.length}</span></a>` +
+      `<span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" title="Hidden from visitors">🔒</span>' : ''}</span><span class="cnt">${g._all.length}</span></a>` +
       (ch.length ? `<ul>${ch.map(node).join('')}</ul>` : '') + '</li>';
   };
   $('#nav').innerHTML =

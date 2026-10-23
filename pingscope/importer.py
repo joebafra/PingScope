@@ -221,7 +221,8 @@ def apply(store, tree, mode="merge"):
         name = str(g.get("name") or "Unnamed").strip()
         gid = find_group(name, parent_id) if mode == "merge" else None
         if gid is None:
-            gid = store.create_group(name, parent_id, g.get("sort_mode") if g.get("sort_mode") in ("manual", "name") else "manual")
+            gid = store.create_group(name, parent_id, g.get("sort_mode") if g.get("sort_mode") in ("manual", "name") else "manual",
+                                     bool(g.get("hidden")))
             existing_groups.append({"id": gid, "parent_id": parent_id, "name": name})
             added["groups"] += 1
         for t in g.get("targets", []):
@@ -251,7 +252,7 @@ def export(store, include_settings=True):
         out = []
         for g in [g for g in groups if g["parent_id"] == parent_id]:
             out.append({
-                "name": g["name"], "sort_mode": g.get("sort_mode", "manual"),
+                "name": g["name"], "sort_mode": g.get("sort_mode", "manual"), "hidden": bool(g.get("hidden")),
                 "targets": [{k: t[k] for k in keep} for t in targets if t["group_id"] == g["id"]],
                 "groups": walk(g["id"]),
             })
