@@ -323,7 +323,7 @@ cd /opt/pingscope
 sudo ./deploy.sh
 ```
 
-This includes the backup and rollback. Without the script:
+This includes the backup and rollback. Prefer it over a plain `git pull`: after `git pull` alone, the new code is on disk but the running container is still the old one. `deploy.sh` notices that and rebuilds. Without the script:
 
 ```bash
 sudo git pull && sudo docker compose up -d --build

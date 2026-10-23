@@ -50,9 +50,13 @@ git fetch --quiet origin "$BRANCH" || die "git fetch failed (check the deploy ke
 CUR=$(git rev-parse HEAD)
 NEW=$(git rev-parse "origin/$BRANCH")
 
+DEPLOYED_FILE="$DIR/data/.deployed-commit"
+DEPLOYED=$(cat "$DEPLOYED_FILE" 2>/dev/null || true)
+
 if [ "${1:-}" = "--status" ]; then
   echo "mode:      $MODE"
-  echo "running:   $(git log -1 --format='%h %s (%cr)' "$CUR")"
+  echo "code:      $(git log -1 --format='%h %s (%cr)' "$CUR")"
+  [ -n "$DEPLOYED" ] && [ "$DEPLOYED" != "$CUR" ] && echo "running:   ${DEPLOYED:0:7} (code was pulled but not deployed; run ./deploy.sh)"
   echo "available: $(git log -1 --format='%h %s (%cr)' "$NEW")"
   [ "$CUR" = "$NEW" ] && echo "up to date" || echo "$(git rev-list --count "$CUR..$NEW") new commit(s)"
   [ -f "$DIR/data/.deploy-failed" ] && echo "last failed deploy: $(cut -c1-7 "$DIR/data/.deploy-failed") (skipped until a newer commit, or use --force)"
@@ -60,7 +64,15 @@ if [ "${1:-}" = "--status" ]; then
 fi
 
 if [ "$CUR" = "$NEW" ] && [ "${1:-}" != "--force" ]; then
-  exit 0   # nothing to do (silent, the timer runs this every few minutes)
+  # Code is current. But if someone ran `git pull` by hand, the running version may be older: rebuild then.
+  if [ "$DEPLOYED" = "$CUR" ]; then
+    exit 0   # nothing to do (silent, the timer runs this every few minutes)
+  fi
+  if [ -z "$DEPLOYED" ]; then
+    log "running version unknown (first run of this deploy script); rebuilding ${CUR:0:7} once"
+  else
+    log "code was updated by hand (git pull) but not deployed yet; deploying ${CUR:0:7}"
+  fi
 fi
 FAILED_FILE="$DIR/data/.deploy-failed"
 if [ "${1:-}" != "--force" ] && [ -f "$FAILED_FILE" ] && [ "$(cat "$FAILED_FILE")" = "$NEW" ]; then
@@ -106,16 +118,20 @@ git merge --ff-only --quiet "origin/$BRANCH" || die "can't fast-forward: local c
 # 3. Rebuild/restart and check it comes up
 if start && healthy; then
   rm -f "$FAILED_FILE"
+  echo "$NEW" > "$DEPLOYED_FILE"
   log "deploy OK: now running ${NEW:0:7}"
   [ "$MODE" = docker ] && docker image prune -f >/dev/null 2>&1 || true
   exit 0
 fi
 
 # 4. Roll back
-log "new version did not start; rolling back to ${CUR:0:7}"
+ROLLBACK=$CUR
+if [ -n "$DEPLOYED" ] && [ "$DEPLOYED" != "$NEW" ] && git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null; then ROLLBACK=$DEPLOYED; fi
+log "new version did not start; rolling back to ${ROLLBACK:0:7}"
 echo "$NEW" > "$FAILED_FILE"
-git reset --hard --quiet "$CUR"
+git reset --hard --quiet "$ROLLBACK"
 if start && healthy; then
-  die "deploy of ${NEW:0:7} failed; rolled back to ${CUR:0:7} (database backup: $backup)"
+  echo "$ROLLBACK" > "$DEPLOYED_FILE"
+  die "deploy of ${NEW:0:7} failed; rolled back to ${ROLLBACK:0:7} (database backup: $backup)"
 fi
 die "deploy failed AND rollback did not come up; check: docker logs pingscope / journalctl -u pingscope"
