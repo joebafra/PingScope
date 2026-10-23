@@ -286,7 +286,7 @@ def admin_data():
         "probes": [p.info() for p in PROBES.values()],
         "families": FAMILY_MODES, "dns_types": DNS_TYPES,
         "settings": s, "settings_schema": settings_mod.schema_for_ui(),
-        "warnings": settings_mod.check(s),
+        "warnings": settings_mod.check(s) + [w for w in collector.warnings if w not in settings_mod.check(s)],
         "status": {"last_run": collector.last_run, "duration": collector.last_duration,
                    "mtr_available": collector.mtr.available,
                    "fping_available": PROBES["ping"].available()},
@@ -398,10 +398,14 @@ async def test_target(body: dict = Body(...)):
     s = {**s, "probe_spacing_ms": 300}
     t["count"] = 3
     series = await Resolver().plan([t], 0)
-    results = await measure(series, s)
+    results, errors = await measure(series, s)
     out = []
     for x in series:
-        r = results[x.key]
+        r = results.get(x.key)
+        if r is None:
+            out.append({"family": x.family, "address": x.address, "error": f"Could not measure: {errors.get(x.target['probe'], 'probe failed')}",
+                        "sent": 0, "lost": 0, "min": None, "max": None, "median": None})
+            continue
         rt = sorted(r.rtts)
         out.append({"family": x.family, "address": x.address, "error": x.error, "sent": r.sent, "lost": r.lost,
                     "min": rt[0] if rt else None, "max": rt[-1] if rt else None,

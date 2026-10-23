@@ -26,6 +26,7 @@ async def run_mtr(family, address, count):
         out, err = await asyncio.wait_for(proc.communicate(), timeout=count * 3 + 30)
     except asyncio.TimeoutError:
         proc.kill()
+        await proc.wait()
         raise RuntimeError("mtr timed out")
     if proc.returncode != 0 and not out:
         raise RuntimeError(err.decode(errors="replace").strip() or f"mtr exited with {proc.returncode}")
@@ -69,6 +70,7 @@ class MtrScheduler:
             self.running.discard(path)
 
     def schedule(self, ts, series, results, s):
+        """results only contains series that were actually measured (probe failures are left out)."""
         if not s["mtr_enabled"] or not self.available:
             return
         if self.sem is None or self.sem_size != s["mtr_max_parallel"]:
@@ -76,7 +78,7 @@ class MtrScheduler:
             self.sem_size = s["mtr_max_parallel"]
         worst = {}
         for x in series:
-            if not x.path or not x.target.get("mtr", True):
+            if not x.path or not x.target.get("mtr", True) or x.key not in results:
                 continue
             r = results.get(x.key)
             loss = (r.lost / r.sent * 100) if r and r.sent else 100.0

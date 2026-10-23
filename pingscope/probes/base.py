@@ -12,6 +12,14 @@ class Result(NamedTuple):
 PROBES = {}
 
 
+class PartialFailure(Exception):
+    """Raised by a probe when only part of its measurements could run. `results` holds what did work."""
+
+    def __init__(self, results, message):
+        super().__init__(message)
+        self.results = results
+
+
 def register(cls):
     PROBES[cls.name] = cls()
     return cls
