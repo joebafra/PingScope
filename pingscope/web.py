@@ -13,7 +13,7 @@ from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Req
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, importer, settings as settings_mod
+from . import __version__, alerts as alerts_mod, importer, settings as settings_mod
 from .collector import Collector, measure
 from .db import Store
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
@@ -242,6 +242,8 @@ def tree(request: Request, _=Depends(can_view)):
         for g in groups:
             g.pop("hidden", None)
             g.pop("hidden_effective", None)
+            for k in ("alert_mode", "alert_loss", "alert_down", "alert_email", "alert_effective"):
+                g.pop(k, None)
     visible = {g["id"] for g in groups}
     targets = []
     for t in store.targets(enabled_only=True):
@@ -334,6 +336,15 @@ def _bad(e):
     return HTTPException(400, str(e))
 
 
+def _public_settings(s):
+    """Settings for the admin UI: secrets are never sent back, only whether they are set."""
+    s = dict(s)
+    for k in settings_mod.SECRETS:
+        s[k + "_set"] = bool(s[k]) or (k == "lettermint_token" and bool(os.environ.get("LETTERMINT_TOKEN")))
+        s[k] = ""
+    return s
+
+
 @admin.get("/data")
 def admin_data():
     s = store.settings()
@@ -342,8 +353,9 @@ def admin_data():
         "series": {tid: [_series_json(x) for x in xs] for tid, xs in collector.series.items()},
         "probes": [p.info() for p in PROBES.values()],
         "families": FAMILY_MODES, "dns_types": DNS_TYPES,
-        "settings": s, "settings_schema": settings_mod.schema_for_ui(),
-        "warnings": settings_mod.check(s) + [w for w in collector.warnings if w not in settings_mod.check(s)],
+        "settings": _public_settings(s), "settings_schema": settings_mod.schema_for_ui(),
+        "warnings": settings_mod.check(s) + [w for w in collector.warnings if w not in settings_mod.check(s)]
+                    + ([collector.alerter.last_error] if collector.alerter.last_error else []),
         "status": {"last_run": collector.last_run, "duration": collector.last_duration,
                    "mtr_available": collector.mtr.available,
                    "fping_available": PROBES["ping"].available()},
@@ -355,6 +367,9 @@ def create_group(body: dict = Body(...)):
     try:
         gid = store.create_group(body.get("name"), body.get("parent_id"), body.get("sort_mode") or "manual",
                                  bool(body.get("hidden")))
+        if body.get("alert_mode"):
+            store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
+                             bool(body.get("alert_email", True)))
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -368,6 +383,9 @@ def update_group(gid: int, body: dict = Body(...)):
             store.set_sort_mode(gid, body["sort_mode"], bool(body.get("sort_subgroups")))
         if "hidden" in body:
             store.set_hidden(gid, bool(body["hidden"]))
+        if "alert_mode" in body:
+            store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
+                             bool(body.get("alert_email", True)))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:
@@ -562,7 +580,8 @@ def import_apply(body: dict = Body(...)):
         store.save_settings({"site_title": site["title"], "site_remark": site.get("remark", "")})
     if kind == "json" and body.get("restore_settings") and tree.get("settings"):
         try:
-            store.save_settings({k: v for k, v in tree["settings"].items() if k in settings_mod.SCHEMA})
+            store.save_settings({k: v for k, v in tree["settings"].items()
+                                 if k in settings_mod.SCHEMA and k not in settings_mod.SECRETS})
         except ValueError as e:
             raise _bad(e)
     collector.poke()
@@ -624,12 +643,54 @@ async def https_status(request: Request):
 
 @admin.put("/settings")
 def save_settings(body: dict = Body(...)):
+    body = {k: v for k, v in body.items() if not k.endswith("_set")}
+    for k in settings_mod.SECRETS:  # empty = keep the stored secret
+        if not str(body.get(k) or "").strip():
+            body.pop(k, None)
     try:
         s = store.save_settings(body)
     except ValueError as e:
         raise _bad(e)
     collector.poke()
-    return {"settings": s, "warnings": settings_mod.check(s)}
+    return {"settings": _public_settings(s), "warnings": settings_mod.check(s)}
+
+
+@admin.get("/alerts")
+def alert_list():
+    targets = {t["id"]: t for t in store.targets()}
+    groups = {g["id"]: g for g in store.groups()}
+
+    def path(gid):
+        out = []
+        while gid in groups:
+            out.insert(0, groups[gid]["name"])
+            gid = groups[gid]["parent_id"]
+        return " › ".join(out)
+
+    rows = []
+    for a in store.alert_list(300):
+        t = targets.get(a["target_id"])
+        if t:
+            rows.append({**a, "name": t["name"], "group": path(t["group_id"])})
+    s = store.settings()
+    return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
+            "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,
+            "groups_on": sum(1 for g in groups.values() if g["alert_mode"] == "on")}
+
+
+@admin.post("/alerts/test")
+async def alert_test():
+    s = store.settings()
+    site = s.get("site_title") or "PingScope"
+    try:
+        await asyncio.to_thread(
+            alerts_mod.send_email, s, f"[{site}] Test email",
+            f"This is a test email from {site}. Alert emails will look like this and come from this address.",
+            f'<div style="font-family:sans-serif;font-size:14px"><h2 style="font-size:18px">{site}</h2>'
+            f'<p>This is a test email from PingScope. Alert emails will come from this address.</p></div>')
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "to": alerts_mod.recipients(s)}
 
 
 @admin.get("/users")

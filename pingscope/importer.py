@@ -223,6 +223,12 @@ def apply(store, tree, mode="merge"):
         if gid is None:
             gid = store.create_group(name, parent_id, g.get("sort_mode") if g.get("sort_mode") in ("manual", "name") else "manual",
                                      bool(g.get("hidden")))
+            if g.get("alert_mode") in ("off", "on"):
+                try:
+                    store.set_alerts(gid, g["alert_mode"], g.get("alert_loss"), g.get("alert_down", True),
+                                     g.get("alert_email", True))
+                except ValueError:
+                    pass
             existing_groups.append({"id": gid, "parent_id": parent_id, "name": name})
             added["groups"] += 1
         for t in g.get("targets", []):
@@ -253,6 +259,8 @@ def export(store, include_settings=True):
         for g in [g for g in groups if g["parent_id"] == parent_id]:
             out.append({
                 "name": g["name"], "sort_mode": g.get("sort_mode", "manual"), "hidden": bool(g.get("hidden")),
+                "alert_mode": g.get("alert_mode", "inherit"), "alert_loss": g.get("alert_loss"),
+                "alert_down": bool(g.get("alert_down", True)), "alert_email": bool(g.get("alert_email", True)),
                 "targets": [{k: t[k] for k in keep} for t in targets if t["group_id"] == g["id"]],
                 "groups": walk(g["id"]),
             })
@@ -262,7 +270,8 @@ def export(store, include_settings=True):
     data = {"format": "pingscope", "version": 1,
             "site": {"title": s["site_title"], "remark": s["site_remark"]}, "groups": walk(None)}
     if include_settings:
-        data["settings"] = s
+        from .settings import SECRETS
+        data["settings"] = {k: v for k, v in s.items() if k not in SECRETS}  # never export API tokens
     return data
 
 

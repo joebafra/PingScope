@@ -37,7 +37,27 @@ SCHEMA = {
                            "Loss above this percentage counts as a problem. 0 = any lost packet.", 0, 99),
     "mtr_max_parallel": (16, int, "Traceroutes (mtr)", "Max parallel mtr processes", "Limits load during large outages.", 1, 128),
     "mtr_retention_days": (30, int, "Traceroutes (mtr)", "Keep mtr history (days)", "", 1, 365),
+
+    "alert_email_from": ("", str, "Notifications", "Send emails from",
+                         'Sender address, e.g. PingScope <noreply@example.com>. The domain must be verified in Lettermint.',
+                         None, None),
+    "alert_email_to": ("", str, "Notifications", "Send emails to",
+                       "One or more addresses, separated by commas.", None, None),
+    "lettermint_token": ("", "secret", "Notifications", "Lettermint API token",
+                         "Project API token from lettermint.co (project settings). Stored on the server and never shown "
+                         "again; leave empty to keep the current token. The LETTERMINT_TOKEN environment variable, "
+                         "if set, takes priority.", None, None),
+    "alert_after_rounds": (3, int, "Notifications", "Rounds in a row before alerting",
+                           "A problem must last this many measurement rounds before an alert starts, and the same "
+                           "number of good rounds before it counts as resolved. Prevents alerts for a single blip.",
+                           1, 60),
+    "alert_recovery": (True, bool, "Notifications", "Email when resolved",
+                       "Also send an email when a target is fine again.", None, None),
+    "alert_reminder_hours": (0, int, "Notifications", "Reminder while still down (hours)",
+                             "Send the alert again every this many hours while it lasts. 0 = never.", 0, 168),
 }
+
+SECRETS = {k for k, v in SCHEMA.items() if v[1] == "secret"}
 
 DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 
@@ -61,6 +81,8 @@ def coerce(key, value):
         if isinstance(value, str):
             return value.strip().lower() in ("1", "true", "yes", "on")
         return bool(value)
+    if typ == "secret":
+        return str(value if value is not None else "").strip()[:500]
     if typ is int:
         try:
             v = int(value)
@@ -77,6 +99,11 @@ def coerce(key, value):
 def check(s):
     """Return warnings for setting combinations that don't fit together."""
     w = []
+    if s.get("alert_email_from") and "@" not in s["alert_email_from"]:
+        w.append("Notifications: the sender address doesn't look like an email address.")
+    for a in [x.strip() for x in s.get("alert_email_to", "").split(",") if x.strip()]:
+        if "@" not in a:
+            w.append(f"Notifications: '{a}' doesn't look like an email address.")
     worst = max(s["ping_count"], s["dns_count"], s["tcp_count"]) * s["probe_spacing_ms"] + s["timeout_ms"]
     if worst > s["interval"] * 900:
         w.append(
@@ -88,7 +115,7 @@ def check(s):
 
 def schema_for_ui():
     return [
-        {"key": k, "default": v[0], "type": v[1].__name__, "section": v[2], "label": v[3], "help": v[4],
+        {"key": k, "default": v[0], "type": v[1] if isinstance(v[1], str) else v[1].__name__, "section": v[2], "label": v[3], "help": v[4],
          "min": v[5], "max": v[6], "options": CHOICES.get(k)}
         for k, v in SCHEMA.items()
     ]

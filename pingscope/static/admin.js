@@ -72,11 +72,11 @@ function route(){
   const h = location.hash.slice(1);
   let tab = h.split(/[=/]/)[0] || 'targets';
   if (h.startsWith('edit=')) tab = 'targets';
-  if (!['targets', 'ipv6', 'import', 'settings', 'users'].includes(tab)) tab = 'targets';
+  if (!['targets', 'ipv6', 'import', 'alerts', 'settings', 'users'].includes(tab)) tab = 'targets';
   A.tab = tab;
   main.onclick = null; main.onchange = null;
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  ({targets: viewTargets, ipv6: viewIpv6, import: viewImport, settings: viewSettings, users: viewUsers})[tab]();
+  ({targets: viewTargets, ipv6: viewIpv6, import: viewImport, alerts: viewAlerts, settings: viewSettings, users: viewUsers})[tab]();
   const m = h.match(/^edit=(\d+)/);
   if (m){
     const t = A.data.targets.find(x => x.id === +m[1]);
@@ -129,7 +129,7 @@ function viewTargets(){
 function renderTree(){
   const box = $('#gtree'); if (!box) return;
   const count = gid => { const ids = new Set([gid, ...descendants(gid)]); return A.data.targets.filter(t => ids.has(t.group_id)).length; };
-  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
+  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' <span title="Notifications on" aria-label="notifications on">🔔</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
     (kids(g.id).length ? `<ul>${kids(g.id).map(node).join('')}</ul>` : '') + '</li>';
   box.innerHTML = `<div class="row" style="padding:2px 4px 8px"><b class="grow">Groups</b><button class="btn sm" id="addTop">+ Group</button></div>` +
     `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>` +
@@ -229,7 +229,7 @@ function renderTargetsPane(){
   pane.innerHTML = `<div class="phead"><div style="margin-right:auto;min-width:0">` +
       (g ? `<div class="muted small">${esc(gPath(g.id).slice(0, -1).map(x => x.name).join(' › ') || 'Top level')}</div>` : '') +
       `<h2 style="margin:0">${g ? esc(g.name) : 'All targets'}</h2>` +
-      (g ? `<div class="muted small">${g.hidden_effective ? '🔒 Hidden from visitors · ' : ''}${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
+      (g ? `<div class="muted small">${g.hidden_effective ? '🔒 Hidden from visitors · ' : ''}${alertSummary(g)} · ${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
       (g ? `<button class="btn" id="gEdit">Edit group</button><button class="btn" id="gSub">+ Subgroup</button>` : '') +
       `<button class="btn primary" id="tAdd" ${A.data.groups.length ? '' : 'disabled'}>+ Add target</button></div>` +
     `<div class="row" style="margin-bottom:10px"><input id="tq" type="search" placeholder="Search all targets…" value="${esc(A.q)}"></div>` +
@@ -397,6 +397,18 @@ function openGroup(g, parentId){
   gform.sort_mode.value = g ? (g.sort_mode || 'manual') : (A.groupMap.get(parentId)?.sort_mode || 'manual');
   gform.sort_subgroups.checked = false;
   gform.hidden.checked = !!(g && g.hidden);
+  gform.alert_mode.value = g ? g.alert_mode : 'inherit';
+  gform.alert_loss.value = g?.alert_loss ?? '';
+  gform.alert_down.checked = g ? g.alert_down : true;
+  gform.alert_email.checked = g ? g.alert_email : true;
+  const parent = () => A.groupMap.get(gform.parent_id.value ? +gform.parent_id.value : null);
+  const syncAlert = () => {
+    const m = gform.alert_mode.value;
+    $('#alertFields').classList.toggle('hidden', m !== 'on');
+    const p = parent();
+    $('#alertInherit').textContent = m !== 'inherit' ? '' : p ? `Now: ${alertSummary(p, true)} (from ${p.alert_effective.from ? A.groupMap.get(p.alert_effective.from)?.name : 'default'})` : 'Top-level group: inherit means off.';
+  };
+  gform.alert_mode.onchange = syncAlert; gform.parent_id.onchange = syncAlert; syncAlert();
   $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
   let del = $('#gDel');
   if (!del){ del = document.createElement('button'); del.type = 'button'; del.id = 'gDel'; del.className = 'btn danger'; del.style.marginRight = 'auto'; del.textContent = 'Delete group'; gform.querySelector('.dfoot').prepend(del); }
@@ -413,7 +425,9 @@ gform.addEventListener('submit', async e => {
   if (e.submitter?.value !== 'save') return;
   e.preventDefault();
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
-                sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked};
+                sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
+                alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
+                alert_email: gform.alert_email.checked};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
     else { const r = await api('api/admin/groups', {method: 'POST', body}); A.gid = r.id; store.set('psa_gid', r.id); }
@@ -546,6 +560,7 @@ function viewSettings(){
         : `<label class="field" data-f="${x.key}"><span>${esc(x.label)}</span>` +
           (x.options ? `<select name="${x.key}">${x.options.map(([v, l]) => `<option value="${v}" ${s[x.key] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
             : x.key === 'site_remark' ? `<textarea name="${x.key}" rows="2" style="font-family:inherit;font-size:14px">${esc(s[x.key])}</textarea>`
+            : x.type === 'secret' ? `<input name="${x.key}" type="password" autocomplete="new-password" placeholder="${s[x.key + '_set'] ? '•••••••• saved, leave empty to keep' : 'not set'}">`
             : `<input name="${x.key}" ${x.type === 'int' ? `type="number" min="${x.min ?? ''}" max="${x.max ?? ''}"` : ''} value="${esc(s[x.key])}">`) +
           (x.help ? `<div class="help">${esc(x.help)}</div>` : '') + '</label>').join('') + '</div>').join('')}
     <div class="row"><button class="btn primary">Save settings</button></div></form></div>`;
@@ -559,6 +574,7 @@ function viewSettings(){
       A.data.settings = r.settings; A.data.warnings = r.warnings;
       $('#swarn').innerHTML = r.warnings.map(w => `<div class="warnbox">${esc(w)}</div>`).join('');
       $('#siteTitle').textContent = r.settings.site_title;
+      for (const x of sch) if (x.type === 'secret'){ const el = e.target[x.key]; el.value = ''; el.placeholder = r.settings[x.key + '_set'] ? '•••••••• saved, leave empty to keep' : 'not set'; }
       toast('Settings saved');
     } catch(err){ toast(err.message, true); }
   };
@@ -584,6 +600,40 @@ async function loadHttps(){
     html += '<p class="muted small" style="margin:10px 0 0">The hostname is set on the server in <code>.env</code> (<code>PINGSCOPE_DOMAIN</code>). Certificates come from Let\'s Encrypt via Caddy and renew automatically about 30 days before they expire.</p>';
   }
   box.innerHTML = html;
+}
+
+// ---------- alerts ----------
+function alertSummary(g, plain){
+  const e = g.alert_effective;
+  if (!e?.on) return plain ? 'notifications off' : 'Notifications off';
+  const parts = [];
+  if (e.loss) parts.push(`loss ≥ ${e.loss}%`);
+  if (e.down) parts.push('down');
+  return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')}${e.email ? ', with email' : ', no email'}`;
+}
+const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
+async function viewAlerts(){
+  const r = await api('api/admin/alerts');
+  const open = r.alerts.filter(a => !a.ended), done = r.alerts.filter(a => a.ended);
+  const row = a => `<tr><td>${a.ended ? '<span class="akind ok">resolved</span>' : `<span class="akind ${a.kind}">${a.kind === 'down' ? 'down' : 'packet loss'}</span>`}</td>
+    <td><a href="./#/t/${a.target_id}"><b>${esc(a.name)}</b></a> <span class="badge">IPv${a.family}</span><div class="muted small">${esc(a.group)}</div></td>
+    <td class="muted small">${fmtShort(a.started)}${a.ended ? ` → ${fmtShort(a.ended)}` : ''}<br>${fmtDur((a.ended || r.now) - a.started)}</td>
+    <td class="small">${a.kind === 'down' && !a.ended ? '100% loss' : `now ${a.last_loss == null ? '–' : a.last_loss.toFixed(0) + '%'} · worst ${a.peak_loss == null ? '–' : a.peak_loss.toFixed(0) + '%'}`}</td>
+    <td class="small muted">${a.emailed ? '✉️ emailed' : ''}</td></tr>`;
+  const table = (rows, empty) => rows.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Status</th><th>Target</th><th>When</th><th>Loss</th><th></th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>` : `<p class="muted">${empty}</p>`;
+  main.innerHTML = `<div style="max-width:1000px">
+    <div class="card pad" style="margin-bottom:16px"><h2>Notifications</h2>
+      <p class="muted small" style="margin:6px 0 10px">Alerts are set per group: open a group under <a href="#targets">Targets</a> → Edit group → Notifications. ${r.groups_on ? `${r.groups_on} group(s) have notifications on.` : '<b>No group has notifications on yet.</b>'} Email settings (Lettermint) are under <a href="#settings">Settings</a> → Notifications.</p>
+      ${r.email_problem ? `<div class="warnbox">Email is not set up yet: ${esc(r.email_problem)}.</div>` : ''}
+      ${r.last_error ? `<div class="warnbox">${esc(r.last_error)}</div>` : ''}
+      <div class="row" style="gap:10px;align-items:center"><button class="btn" id="testMail">Send test email</button>
+      <span class="muted small">${r.last_sent ? `Last alert email: ${fmtShort(r.last_sent)}` : ''}</span></div></div>
+    <div class="card pad" style="margin-bottom:16px"><h2>Active alerts (${open.length})</h2><div style="margin-top:10px">${table(open, 'Everything is fine.')}</div></div>
+    <div class="card pad"><h2>History</h2><p class="muted small" style="margin:4px 0 10px">Resolved alerts of the last 90 days.</p>${table(done, 'No resolved alerts yet.')}</div></div>`;
+  $('#testMail').onclick = async () => {
+    try { const x = await api('api/admin/alerts/test', {method: 'POST'}); toast(`Test email sent to ${x.to.join(', ')}`); }
+    catch(err){ toast(err.message, true); }
+  };
 }
 
 // ---------- users ----------

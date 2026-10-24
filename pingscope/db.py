@@ -40,7 +40,16 @@ CREATE TABLE IF NOT EXISTS users(
 CREATE TABLE IF NOT EXISTS sessions(
   token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS alerts(
+  id INTEGER PRIMARY KEY, series TEXT NOT NULL, target_id INTEGER NOT NULL, family INTEGER NOT NULL,
+  kind TEXT NOT NULL, started INTEGER NOT NULL, ended INTEGER, peak_loss REAL, last_loss REAL,
+  emailed INTEGER NOT NULL DEFAULT 0, last_email INTEGER);
+CREATE INDEX IF NOT EXISTS alerts_open ON alerts(ended);
+CREATE INDEX IF NOT EXISTS alerts_started ON alerts(started);
 """
+
+# Notifications per group. mode: inherit (same as the parent group; top level = off), off or on.
+ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
                  "port", "count", "mtr", "enabled", "note")
@@ -97,6 +106,8 @@ def verify_password(pw, stored):
         return False
 
 
+GROUP_COLS = "id, parent_id, name, sort, sort_mode, hidden, alert_mode, alert_loss, alert_down, alert_email"
+
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
 ROLES = ("admin", "viewer")
 
@@ -118,6 +129,11 @@ class Store:
             self.c.execute("ALTER TABLE groups ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
         if "role" not in [r[1] for r in self.c.execute("PRAGMA table_info(users)")]:
             self.c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")  # existing users stay admin
+        gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
+        for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
+                         ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1")):
+            if col not in gcols:
+                self.c.execute(f"ALTER TABLE groups ADD COLUMN {col} {ddl}")
         self.lock = threading.RLock()
         self._settings = None
 
@@ -162,8 +178,21 @@ class Store:
     # ---- groups --------------------------------------------------------------------
 
     def groups(self):
-        out = [dict(r) for r in self._q("SELECT id, parent_id, name, sort, sort_mode, hidden FROM groups ORDER BY sort, id")]
+        out = [dict(r) for r in self._q(f"SELECT {GROUP_COLS} FROM groups ORDER BY sort, id")]
         by = {g["id"]: g for g in out}
+        for g in out:
+            g["alert_down"], g["alert_email"] = bool(g["alert_down"]), bool(g["alert_email"])
+        for g in out:  # effective notification settings: the first group up the tree that isn't "inherit"
+            p, src = g, None
+            while p is not None:
+                if p["alert_mode"] != "inherit":
+                    src = p
+                    break
+                p = by.get(p["parent_id"])
+            on = bool(src and src["alert_mode"] == "on")
+            g["alert_effective"] = {"on": on, "from": src["id"] if src else None,
+                                    "loss": src["alert_loss"] if on else None, "down": on and src["alert_down"],
+                                    "email": on and src["alert_email"]}
         for g in out:  # effective visibility: a group is hidden when it or any parent group is hidden
             g["hidden"] = bool(g["hidden"])
             p, hid = g["parent_id"], g["hidden"]
@@ -180,7 +209,7 @@ class Store:
             self.c.execute("UPDATE groups SET hidden=? WHERE id=?", (1 if hidden else 0, gid))
 
     def group(self, gid):
-        r = self._one("SELECT id, parent_id, name, sort, sort_mode, hidden FROM groups WHERE id=?", (gid,))
+        r = self._one(f"SELECT {GROUP_COLS} FROM groups WHERE id=?", (gid,))
         return dict(r) if r else None
 
     def _next_sort(self, table, col, val):
@@ -215,6 +244,24 @@ class Store:
             cur = self.c.execute("INSERT INTO groups(parent_id, name, sort, sort_mode, hidden) VALUES (?,?,?,?,?)",
                                  (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode, 1 if hidden else 0))
             return cur.lastrowid
+
+    def set_alerts(self, gid, mode, loss=None, down=True, email=True):
+        if mode not in ALERT_MODES:
+            raise ValueError("Notifications must be inherit, off or on")
+        if loss in ("", None):
+            loss = None
+        else:
+            try:
+                loss = int(loss)
+            except (TypeError, ValueError):
+                raise ValueError("Packet loss threshold must be a whole number")
+            if not 1 <= loss <= 100:
+                raise ValueError("Packet loss threshold must be between 1 and 100%")
+        if mode == "on" and loss is None and not down:
+            raise ValueError("Choose a packet loss threshold, alerts when down, or both")
+        with self.lock, self.c:
+            self.c.execute("UPDATE groups SET alert_mode=?, alert_loss=?, alert_down=?, alert_email=? WHERE id=?",
+                           (mode, loss, 1 if down else 0, 1 if email else 0, gid))
 
     def set_sort_mode(self, gid, sort_mode, include_subgroups=False):
         ids = [gid, *(self.descendants(gid) if include_subgroups else [])]
@@ -311,6 +358,7 @@ class Store:
                 k = f"{tid}-{fam}"
                 self.c.execute("DELETE FROM samples WHERE series=?", (k,))
                 self.c.execute("DELETE FROM hourly WHERE series=?", (k,))
+            self.c.execute("DELETE FROM alerts WHERE target_id=?", (tid,))
 
     def reorder(self, kind, ids):
         table = {"group": "groups", "target": "targets"}[kind]
@@ -323,6 +371,7 @@ class Store:
             self.c.execute("DELETE FROM groups")
             self.c.execute("DELETE FROM samples")
             self.c.execute("DELETE FROM hourly")
+            self.c.execute("DELETE FROM alerts")
             self.c.execute("DELETE FROM meta WHERE k='rolled_until'")
 
     # ---- users & sessions -----------------------------------------------------------
@@ -396,6 +445,28 @@ class Store:
     def delete_session(self, token):
         with self.lock, self.c:
             self.c.execute("DELETE FROM sessions WHERE token=?", (self._tok(token),))
+
+    # ---- alerts ---------------------------------------------------------------------
+
+    def open_alerts(self):
+        return [dict(r) for r in self._q("SELECT * FROM alerts WHERE ended IS NULL")]
+
+    def create_alert(self, series, target_id, family, kind, started, loss):
+        with self.lock, self.c:
+            return self.c.execute("INSERT INTO alerts(series, target_id, family, kind, started, peak_loss, last_loss) "
+                                  "VALUES (?,?,?,?,?,?,?)", (series, target_id, family, kind, started, loss, loss)).lastrowid
+
+    def update_alert(self, aid, **f):
+        if f:
+            with self.lock, self.c:
+                self.c.execute(f"UPDATE alerts SET {', '.join(k + '=?' for k in f)} WHERE id=?", (*f.values(), aid))
+
+    def alert_list(self, limit=200):
+        return [dict(r) for r in self._q("SELECT * FROM alerts ORDER BY ended IS NOT NULL, started DESC LIMIT ?", (limit,))]
+
+    def prune_alerts(self, before_ts):
+        with self.lock, self.c:
+            self.c.execute("DELETE FROM alerts WHERE ended IS NOT NULL AND ended<?", (before_ts,))
 
     # ---- measurements -------------------------------------------------------------
 

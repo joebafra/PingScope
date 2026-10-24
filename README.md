@@ -24,6 +24,7 @@ Latency and packet-loss monitoring for **IPv4 and IPv6**, in the spirit of Smoke
   - Traceroute hops are hidden from visitors unless you enable them.
   - Logged-in admins see everything.
 - **Your own branding:** site title and welcome text are set in **Admin → Settings**.
+- **Email alerts:** per group a packet-loss threshold and/or an alert when a target is down, with or without email (sent via [Lettermint](https://lettermint.co)). Problems in the same round are combined into one email. See [Email notifications](docs/INSTALL.md#4a-email-notifications-lettermint).
 - **Two user roles:** *Admin* (full access) and *Viewer* (view-only: sees the dashboard with hostnames, IP addresses, traceroute hops and hidden groups, but can't change anything). Manage them under **Admin → Users**.
 - **Two dashboard styles:** *Modern* (default, follows light/dark mode) or *Classic*, a SmokePing-style look with a dark menu, framed graphs and the familiar median rtt / packet loss legend under every graph. Switch any time under **Admin → Settings → Dashboard style**.
 - **HTTPS out of the box:**

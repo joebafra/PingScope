@@ -33,6 +33,9 @@ main{padding:18px 20px 48px;margin:0 auto}
 .bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;padding:6px 10px;margin-bottom:10px;font-size:13px}
 .bulk select{width:auto}
 td.acts{white-space:nowrap;text-align:right}
+.alertbox{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.akind{display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;font-weight:600;color:#fff;white-space:nowrap}
+.akind.down{background:var(--bad)}.akind.loss{background:var(--warn)}.akind.ok{background:var(--ok)}
 td.acts .btn{padding:2px 7px}
 tr.off td{opacity:.5}
 .st{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--muted);white-space:nowrap;line-height:1.6}
@@ -78,7 +81,7 @@ tr.off td{opacity:.5}
   <button class="btn hidden" id="logout">Log out</button>
 </header>
 <nav class="tabs hidden" id="tabs">
-  <button data-tab="targets">Targets</button><button data-tab="ipv6">IPv6</button><button data-tab="import">Import &amp; export</button><button data-tab="settings">Settings</button><button data-tab="users">Users</button>
+  <button data-tab="targets">Targets</button><button data-tab="ipv6">IPv6</button><button data-tab="import">Import &amp; export</button><button data-tab="alerts">Alerts</button><button data-tab="settings">Settings</button><button data-tab="users">Users</button>
 </nav>
 <main id="main"></main>
 
@@ -129,6 +132,21 @@ tr.off td{opacity:.5}
       <option value="name">Name, A → Z (always sorted automatically)</option></select></label>
     <label class="check" id="sortSubWrap"><input type="checkbox" name="sort_subgroups"> <span>Use this target order for all subgroups too</span></label>
     <label class="check"><input type="checkbox" name="hidden"> <span><b>Hide from visitors</b><br><span class="muted small">This group, its subgroups and their targets are only visible when logged in.</span></span></label>
+    <div class="alertbox">
+      <label class="field"><span>Notifications</span><select name="alert_mode">
+        <option value="inherit">Same as the parent group</option>
+        <option value="off">Off</option>
+        <option value="on">On</option></select>
+        <div class="help" id="alertInherit"></div></label>
+      <div id="alertFields">
+        <label class="field"><span>Alert at packet loss of</span>
+          <span class="row" style="gap:6px;align-items:center"><input name="alert_loss" type="number" min="1" max="100" placeholder="e.g. 10" style="width:110px"> <span class="muted">% or more</span></span>
+          <div class="help">Leave empty for no packet-loss alerts.</div></label>
+        <label class="check"><input type="checkbox" name="alert_down"> <span><b>Alert when down</b><br><span class="muted small">No replies at all (100% loss).</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">Without email, alerts are only listed under Admin → Alerts.</span></span></label>
+        <div class="muted small" style="margin-top:6px">Applies to this group and its subgroups that are set to "Same as the parent group".</div>
+      </div>
+    </div>
   </div>
   <div class="dfoot"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
 </form></dialog>

@@ -14,7 +14,8 @@ services:
     environment:
       PINGSCOPE_LISTEN: ${PINGSCOPE_LISTEN:-127.0.0.1}
       PINGSCOPE_PORT: ${PINGSCOPE_PORT:-8080}
-      PINGSCOPE_DOMAIN: ${PINGSCOPE_DOMAIN:-}   # only used for the HTTPS status in Admin → Settings
+      PINGSCOPE_DOMAIN: ${PINGSCOPE_DOMAIN:-}   # HTTPS status in Admin → Settings and links in alert emails
+      LETTERMINT_TOKEN: ${LETTERMINT_TOKEN:-}   # optional; can also be set in Admin → Settings → Notifications
       TZ: ${TZ:-Europe/Amsterdam}
 
   # Enabled with COMPOSE_PROFILES=https in .env.

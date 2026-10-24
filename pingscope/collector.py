@@ -4,6 +4,7 @@ import logging
 import time
 
 from . import settings as settings_mod
+from .alerts import Alerter
 from .db import summary
 from .mtr import MtrScheduler
 from .probes import PROBES, PartialFailure, Result
@@ -17,6 +18,8 @@ class Collector:
         self.store = store
         self.resolver = Resolver()
         self.mtr = MtrScheduler(store)
+        self.alerter = Alerter(store)
+        self._mail_task = None
         self.series = {}      # target id -> [Series]
         self.latest = {}      # series key -> summary
         self.last_run = None
@@ -79,6 +82,12 @@ class Collector:
             self.latest[x.key] = summary(ts, r.sent, r.lost, r.rtts)
         await asyncio.to_thread(self.store.insert_samples, ts, rows)
         self.mtr.schedule(ts, series, results, s)
+        try:
+            events = await asyncio.to_thread(self.alerter.check, ts, series, results, s)
+            if events:  # send in the background, the next round doesn't wait for the mail server
+                self._mail_task = asyncio.create_task(self.alerter.notify(ts, events, s))
+        except Exception:
+            log.exception("Checking alerts failed")
         await asyncio.to_thread(self.store.rollup, ts, s["raw_retention_days"] * 86400)
         self.last_run = ts
         self.last_duration = round(time.monotonic() - t0, 1)

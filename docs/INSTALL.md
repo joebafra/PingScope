@@ -269,6 +269,23 @@ Run the installer and leave the hostname empty. PingScope then listens on `http:
 
 ---
 
+## 4a. Email notifications (Lettermint)
+
+PingScope can email you when targets have packet loss or are down. Emails are sent through [Lettermint](https://lettermint.co).
+
+1. **In Lettermint:** add and verify your sending domain (for example `joebafra.nl`), then create a **Project API token** in the project settings.
+2. **In PingScope → Admin → Settings → Notifications:**
+   - *Send emails from*: e.g. `PingScope <noreply@yourdomain.nl>` (the domain must be verified in Lettermint)
+   - *Send emails to*: one or more addresses, separated by commas
+   - *Lettermint API token*: paste the token. It is stored on the server and never shown again.
+   - Optionally change *Rounds in a row before alerting* (default 3), *Email when resolved* and the reminder interval.
+3. **Admin → Alerts → Send test email** to check that everything works.
+4. **Turn alerts on per group:** Admin → Targets → select a group → *Edit group* → *Notifications: On*. Set the packet-loss percentage (for example 10%), whether to alert when a target is down (no replies at all), and whether to send an email. Subgroups set to *Same as the parent group* follow the group above them.
+
+All alerts that start or end in the same measurement round are combined into one email, so a large outage sends one message instead of hundreds. Active alerts and the history of the last 90 days are listed under **Admin → Alerts**.
+
+Instead of entering the token in the admin panel you can put `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so the emails contain links to the dashboard.
+
 ## 5. Updating, backups and useful commands
 
 ### Automatic updates (deploy from GitHub)
