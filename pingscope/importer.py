@@ -252,7 +252,7 @@ def export(store, include_settings=True):
     groups = store.groups()
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
-            "mtr", "enabled", "note")
+            "mtr", "enabled", "note", "alert_skip")
 
     def walk(parent_id):
         out = []

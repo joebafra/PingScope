@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS targets(
   host TEXT NOT NULL DEFAULT '', host_v6 TEXT NOT NULL DEFAULT '', families TEXT NOT NULL DEFAULT 'auto',
   dns_query TEXT NOT NULL DEFAULT '', dns_type TEXT NOT NULL DEFAULT 'A',
   port INTEGER, count INTEGER, mtr INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1,
-  note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0);
+  note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
+  alert_skip INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -52,7 +53,7 @@ CREATE INDEX IF NOT EXISTS alerts_started ON alerts(started);
 ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
-                 "port", "count", "mtr", "enabled", "note")
+                 "port", "count", "mtr", "enabled", "note", "alert_skip")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -129,6 +130,8 @@ class Store:
             self.c.execute("ALTER TABLE groups ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
         if "role" not in [r[1] for r in self.c.execute("PRAGMA table_info(users)")]:
             self.c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")  # existing users stay admin
+        if "alert_skip" not in [r[1] for r in self.c.execute("PRAGMA table_info(targets)")]:
+            self.c.execute("ALTER TABLE targets ADD COLUMN alert_skip INTEGER NOT NULL DEFAULT 0")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1")):
@@ -304,6 +307,7 @@ class Store:
         t = dict(r)
         t["mtr"] = bool(t["mtr"])
         t["enabled"] = bool(t["enabled"])
+        t["alert_skip"] = bool(t["alert_skip"])
         return t
 
     def targets(self, enabled_only=False):
@@ -339,7 +343,7 @@ class Store:
                                (group_id, self._next_sort("targets", "group_id", group_id), tid))
 
     def set_targets(self, ids, **fields):
-        allowed = {"enabled", "mtr", "group_id"}
+        allowed = {"enabled", "mtr", "group_id", "alert_skip"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not ids or not sets:
             return
@@ -463,6 +467,17 @@ class Store:
 
     def alert_list(self, limit=200):
         return [dict(r) for r in self._q("SELECT * FROM alerts ORDER BY ended IS NOT NULL, started DESC LIMIT ?", (limit,))]
+
+    def loss_rounds(self, keys, since):
+        """{series: [(ts, sent, lost), ...]} from the per-round data, oldest first."""
+        out = {k: [] for k in keys}
+        keys = list(keys)
+        for i in range(0, len(keys), 500):
+            part = keys[i:i + 500]
+            for r in self._q(f"SELECT series, ts, sent, lost FROM samples WHERE ts>=? AND series IN "
+                             f"({','.join('?' * len(part))}) ORDER BY ts", (since, *part)):
+                out[r[0]].append((r[1], r[2], r[3]))
+        return out
 
     def prune_alerts(self, before_ts):
         with self.lock, self.c:

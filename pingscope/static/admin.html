@@ -34,6 +34,13 @@ main{padding:18px 20px 48px;margin:0 auto}
 .bulk select{width:auto}
 td.acts{white-space:nowrap;text-align:right}
 .alertbox{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.apreview{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:13px}
+.apreview:empty{display:none}
+.apreview .big{font-size:15px;margin:2px 0 6px}
+.apreview table{width:100%;border-collapse:collapse;margin-top:6px}
+.apreview td{padding:4px 6px;border-top:1px solid var(--line);vertical-align:top}
+.apreview .plist{max-height:260px;overflow:auto}
+.apreview summary{cursor:pointer;color:var(--accent);margin-top:4px}
 .akind{display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;font-weight:600;color:#fff;white-space:nowrap}
 .akind.down{background:var(--bad)}.akind.loss{background:var(--warn)}.akind.ok{background:var(--ok)}
 td.acts .btn{padding:2px 7px}
@@ -111,6 +118,7 @@ tr.off td{opacity:.5}
     </div>
     <label class="check"><input type="checkbox" name="mtr"> <span>Run mtr traceroutes for this target</span></label>
     <label class="check"><input type="checkbox" name="enabled"> <span>Enabled</span></label>
+    <label class="check"><input type="checkbox" name="alert_skip"> <span>No alerts for this target <span class="muted small">(skip it when its group has notifications on)</span></span></label>
     <label class="field" data-f="note"><span>Note <span class="faint">(only visible here)</span></span><textarea name="note" rows="2" style="font-family:inherit;font-size:13px"></textarea></label>
     <div class="testres" id="testRes"></div>
   </div>
@@ -144,6 +152,7 @@ tr.off td{opacity:.5}
           <div class="help">Leave empty for no packet-loss alerts.</div></label>
         <label class="check"><input type="checkbox" name="alert_down"> <span><b>Alert when down</b><br><span class="muted small">No replies at all (100% loss).</span></span></label>
         <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">Without email, alerts are only listed under Admin → Alerts.</span></span></label>
+        <div id="alertPreview" class="apreview"></div>
         <div class="muted small" style="margin-top:6px">Applies to this group and its subgroups that are set to "Same as the parent group".</div>
       </div>
     </div>

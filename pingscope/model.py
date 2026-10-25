@@ -57,6 +57,7 @@ def clean_target(data, probes):
     t["note"] = str(data.get("note") or "").strip()[:1000]
     t["mtr"] = bool(data.get("mtr", True))
     t["enabled"] = bool(data.get("enabled", True))
+    t["alert_skip"] = bool(data.get("alert_skip", False))
     for k in ("port", "count"):
         v = data.get(k)
         if v in (None, ""):

@@ -282,6 +282,10 @@ PingScope can email you when targets have packet loss or are down. Emails are se
 3. **Admin → Alerts → Send test email** to check that everything works.
 4. **Turn alerts on per group:** Admin → Targets → select a group → *Edit group* → *Notifications: On*. Set the packet-loss percentage (for example 10%), whether to alert when a target is down (no replies at all), and whether to send an email. Subgroups set to *Same as the parent group* follow the group above them.
 
+While you edit the group, a **preview** shows how many targets would have alerted with these settings over the last 24 hours, 7 or 14 days, how many alerts and roughly how many emails per day. It lists the targets that would alert, each with a **Skip** button.
+
+**Skip single targets:** a target with *No alerts for this target* (in its edit dialog, via the 🔕 Skip button in the preview, or with the bulk buttons *🔕 No alerts* / *🔔 Alerts on* after selecting targets) never alerts, even when its group has notifications on. Skipped targets show a 🔕 in the target list.
+
 All alerts that start or end in the same measurement round are combined into one email, so a large outage sends one message instead of hundreds. Active alerts and the history of the last 90 days are listed under **Admin → Alerts**.
 
 Instead of entering the token in the admin panel you can put `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so the emails contain links to the dashboard.

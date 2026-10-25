@@ -78,6 +78,36 @@ def fmt_dur(sec):
     return f"{sec // 86400} d {sec % 86400 // 3600} h"
 
 
+def simulate(rounds, loss_pct, down, need):
+    """Replay past rounds [(ts, sent, lost)] with the same rules as the live alerts.
+    Returns [(start_ts, end_ts or None, kind, peak_loss)]."""
+    out, bad, good, downs, worst, peak, cur = [], 0, 0, 0, None, 0, None
+    for ts, sent, lost in rounds:
+        if not sent:
+            continue
+        loss = lost / sent * 100
+        kind = "down" if lost == sent and down else "loss" if loss_pct and loss >= loss_pct else None
+        if kind:
+            bad, good, peak = bad + 1, 0, max(peak, loss)
+            downs = downs + 1 if kind == "down" else 0
+            worst = "down" if downs >= need else "loss"
+        else:
+            downs, good, bad = 0, good + 1, 0
+        if cur:
+            cur[3] = max(cur[3], loss)
+            if cur[2] == "loss" and downs >= need:
+                cur[2] = "down"
+            if good >= need:
+                cur[1] = ts
+                out.append(tuple(cur))
+                cur, peak = None, 0
+        elif kind and bad >= need:
+            cur = [ts, None, worst, peak]
+    if cur:
+        out.append(tuple(cur))
+    return out
+
+
 class Alerter:
     def __init__(self, store):
         self.store = store
@@ -106,6 +136,8 @@ class Alerter:
                 continue
             live.add(x.key)
             cfg = (groups.get(x.target["group_id"]) or {}).get("alert_effective") or {}
+            if x.target.get("alert_skip"):
+                cfg = {}  # this target is excluded from alerts
             a = self.open.get(x.key)
             if not cfg.get("on"):
                 if a:  # notifications were switched off: close quietly

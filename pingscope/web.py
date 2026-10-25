@@ -447,6 +447,8 @@ def bulk_targets(body: dict = Body(...)):
         store.delete_targets(ids)
     elif action in ("enable", "disable"):
         store.set_targets(ids, enabled=int(action == "enable"))
+    elif action in ("alerts_off", "alerts_on"):
+        store.set_targets(ids, alert_skip=int(action == "alerts_off"))
     elif action == "move":
         gid = int(body.get("group_id") or 0)
         if not store.group(gid):
@@ -676,6 +678,71 @@ def alert_list():
     return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
             "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,
             "groups_on": sum(1 for g in groups.values() if g["alert_mode"] == "on")}
+
+
+@admin.post("/alerts/preview")
+def alert_preview(body: dict = Body(...)):
+    """How many targets would have alerted in the past days with these group settings."""
+    gid = body.get("group_id")
+    parent = body.get("parent_id")
+    groups = {g["id"]: g for g in store.groups()}
+    try:
+        loss = int(body["alert_loss"]) if str(body.get("alert_loss") or "").strip() else None
+    except ValueError:
+        raise HTTPException(400, "Packet loss threshold must be a whole number")
+    down = bool(body.get("alert_down", True))
+    s = store.settings()
+    need = int(body.get("after_rounds") or s["alert_after_rounds"])
+    days = max(1, min(int(body.get("days") or 7), s["raw_retention_days"]))
+    # groups that follow this group's setting: itself + subgroups whose path down to it is all "inherit"
+    members = set()
+    if gid in groups:
+        members.add(gid)
+        changed = True
+        while changed:
+            changed = False
+            for g in groups.values():
+                if g["id"] not in members and g["parent_id"] in members and g["alert_mode"] == "inherit":
+                    members.add(g["id"])
+                    changed = True
+    names = {}
+
+    def path(g_id):
+        if g_id not in names:
+            out, x = [], g_id
+            while x in groups:
+                out.insert(0, groups[x]["name"])
+                x = groups[x]["parent_id"]
+            names[g_id] = " › ".join(out)
+        return names[g_id]
+
+    targets = [t for t in store.targets(enabled_only=True) if t["group_id"] in members]
+    skipped = [t for t in targets if t["alert_skip"]]
+    active = [t for t in targets if not t["alert_skip"]]
+    since = int(time.time()) - days * 86400
+    keys = {f"{t['id']}-{f}": (t, f) for t in active for f in (4, 6)}
+    hist = store.loss_rounds(keys, since)
+    rows, emails, n_alerts = [], set(), 0
+    for key, rounds in hist.items():
+        if not rounds:
+            continue
+        t, fam = keys[key]
+        runs = alerts_mod.simulate(rounds, loss, down, need)
+        if not runs:
+            continue
+        n_alerts += len(runs)
+        for st, en, _, _ in runs:
+            emails.add(st)
+            if en and s["alert_recovery"]:
+                emails.add(en)
+        rows.append({"target_id": t["id"], "name": t["name"], "group": path(t["group_id"]), "family": fam,
+                     "alerts": len(runs), "down": sum(1 for r in runs if r[2] == "down"),
+                     "minutes": sum(((r[1] or int(time.time())) - r[0]) // 60 for r in runs),
+                     "worst": max(r[3] for r in runs), "open": runs[-1][1] is None})
+    rows.sort(key=lambda r: (-r["alerts"], -r["minutes"]))
+    return {"days": days, "targets": len(active), "skipped": [{"id": t["id"], "name": t["name"]} for t in skipped],
+            "targets_alerting": len({r["target_id"] for r in rows}), "alerts": n_alerts, "emails": len(emails),
+            "rows": rows[:100], "need": need, "has_data": any(hist.values())}
 
 
 @admin.post("/alerts/test")

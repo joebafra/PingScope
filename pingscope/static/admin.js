@@ -194,7 +194,7 @@ async function renderOfflinePane(){
   $('#offbody').outerHTML = `<div class="tblwrap"><table class="tbl ttbl"><thead><tr><th style="width:28px"><input type="checkbox" id="selAll"></th><th>Name</th><th class="hide-sm">Group</th><th>Type</th><th class="hide-sm">Host</th><th>Offline since</th><th>Reason</th><th></th></tr></thead><tbody>` +
     (rows.length ? rows.map(o => { const t = byId.get(o.id);
       return `<tr data-t="${t.id}"><td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a></td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' <span title="No alerts for this target">🔕</span>' : ''}</td>
         <td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td><td>${probeBadge(t.probe)}</td>
         <td class="hide-sm mono small wrap">${esc(t.host || t.host_v6)}</td>
         <td class="nowrap">${o.never ? `<span style="color:var(--bad)">never replied</span>${o.since ? `<div class="faint small">added ${fmtShort(o.since)}</div>` : ''}`
@@ -239,7 +239,7 @@ function renderTargetsPane(){
       `<th>Type</th><th class="hide-sm">Host</th><th class="hide-sm hide-md">IPv6</th><th>Status</th><th></th></tr></thead><tbody>` +
     (ts.length ? ts.map((t, i) => `<tr data-t="${t.id}" draggable="true" class="${t.enabled ? '' : 'off'}">
         <td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' <span title="No alerts for this target">🔕</span>' : ''}${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
         ${showGroup ? `<td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td>` : ''}
         <td>${probeBadge(t.probe)}</td>
         <td class="hide-sm mono small wrap">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
@@ -285,6 +285,7 @@ function renderBulk(){
   box.innerHTML = `<div class="bulk"><b>${A.sel.size} selected</b>
     <select id="bulkGroup"><option value="">Move to group…</option>${groupOptions(null)}</select>
     <button class="btn sm" data-a="enable">Enable</button><button class="btn sm" data-a="disable">Disable</button>
+    <button class="btn sm" data-a="alerts_off">🔕 No alerts</button><button class="btn sm" data-a="alerts_on">🔔 Alerts on</button>
     <button class="btn sm danger" data-a="delete">Delete</button><button class="btn sm ghost" data-a="clear">Clear selection</button></div>`;
   $('#bulkGroup').onchange = e => e.target.value && bulk('move', [...A.sel], {group_id: +e.target.value});
   box.onclick = e => {
@@ -297,7 +298,7 @@ function renderBulk(){
 async function bulk(action, ids, extra = {}){
   try {
     await api('api/admin/targets/bulk', {method: 'POST', body: {action, ids, ...extra}});
-    toast({move: 'Moved', enable: 'Enabled', disable: 'Disabled', delete: 'Deleted'}[action] + ` ${ids.length} target(s)`);
+    toast({move: 'Moved', enable: 'Enabled', disable: 'Disabled', delete: 'Deleted', alerts_off: 'Alerts off for', alerts_on: 'Alerts on for'}[action] + ` ${ids.length} target(s)`);
     if (action === 'delete' || action === 'move') A.sel.clear();
     await load(); renderTree(); renderTargetsPane();
   } catch(e){ toast(e.message, true); }
@@ -308,7 +309,7 @@ const tdlg = $('#tdlg'), tform = $('#tform');
 let editing = null;
 function openTarget(t, gid){
   editing = t;
-  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, note: '', group_id: gid};
+  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, note: '', group_id: gid};
   $('#tdlgTitle').textContent = t ? 'Edit target' : 'Add target';
   tform.group_id.innerHTML = groupOptions(p.group_id);
   tform.probe.innerHTML = A.data.probes.map(x => `<option value="${x.name}">${esc(x.label)}</option>`).join('');
@@ -316,7 +317,7 @@ function openTarget(t, gid){
   tform.dns_type.innerHTML = A.data.dns_types.map(x => `<option>${x}</option>`).join('');
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
-  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled;
+  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip;
   $('#tDelete').classList.toggle('hidden', !t);
   $('#testRes').innerHTML = ''; $('#lookupRes').innerHTML = '';
   markErrors(tform, {});
@@ -336,7 +337,7 @@ function probeChanged(){
 tform.probe.onchange = probeChanged;
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
-  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked;
+  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked;
   fd.group_id = +fd.group_id;
   return fd;
 }
@@ -408,7 +409,10 @@ function openGroup(g, parentId){
     const p = parent();
     $('#alertInherit').textContent = m !== 'inherit' ? '' : p ? `Now: ${alertSummary(p, true)} (from ${p.alert_effective.from ? A.groupMap.get(p.alert_effective.from)?.name : 'default'})` : 'Top-level group: inherit means off.';
   };
-  gform.alert_mode.onchange = syncAlert; gform.parent_id.onchange = syncAlert; syncAlert();
+  const preview = () => { clearTimeout(gPrevTimer); gPrevTimer = setTimeout(() => loadPreview(g), 350); };
+  gform.alert_mode.onchange = () => { syncAlert(); preview(); }; gform.parent_id.onchange = syncAlert; syncAlert();
+  gform.alert_loss.oninput = preview; gform.alert_down.onchange = preview;
+  $('#alertPreview').innerHTML = ''; preview();
   $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
   let del = $('#gDel');
   if (!del){ del = document.createElement('button'); del.type = 'button'; del.id = 'gDel'; del.className = 'btn danger'; del.style.marginRight = 'auto'; del.textContent = 'Delete group'; gform.querySelector('.dfoot').prepend(del); }
@@ -421,6 +425,7 @@ function openGroup(g, parentId){
   };
   gdlg.showModal(); gform.name.focus();
 }
+gdlg.addEventListener('close', () => { if (A.skipChanged){ A.skipChanged = false; renderTargetsPane(); } });
 gform.addEventListener('submit', async e => {
   if (e.submitter?.value !== 'save') return;
   e.preventDefault();
@@ -434,6 +439,43 @@ gform.addEventListener('submit', async e => {
     gdlg.close(); toast('Group saved'); await load(); renderTree(); renderTargetsPane();
   } catch(err){ toast(err.message, true); }
 });
+
+let gPrevTimer, gPrevDays = 7, gPrevSeq = 0;
+async function loadPreview(g){
+  const box = $('#alertPreview');
+  if (!g || gform.alert_mode.value !== 'on'){ box.innerHTML = ''; return; }
+  const seq = ++gPrevSeq;
+  box.innerHTML = '<span class="muted">Calculating…</span>';
+  let r;
+  try { r = await api('api/admin/alerts/preview', {method: 'POST', body: {group_id: g.id, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked, days: gPrevDays}}); }
+  catch(err){ if (seq === gPrevSeq) box.innerHTML = `<span style="color:var(--bad)">${esc(err.message)}</span>`; return; }
+  if (seq !== gPrevSeq) return;
+  const days = `<select id="pvDays" style="width:auto;padding:2px 6px;font-size:13px">${[[1, 'last 24 hours'], [7, 'last 7 days'], [14, 'last 14 days']].map(([v, l]) => `<option value="${v}" ${v === gPrevDays ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const perDay = r.emails / r.days;
+  let html = `<div class="muted small">Preview with these settings · ${days}</div>`;
+  if (!r.has_data) html += `<div class="big">No measurement data for this period yet.</div>`;
+  else html += `<div class="big"><b>${r.targets_alerting}</b> of ${r.targets} targets would have alerted · <b>${r.alerts}</b> alert${r.alerts === 1 ? '' : 's'}</div>` +
+    `<div class="muted small">≈ ${r.emails} email${r.emails === 1 ? '' : 's'} (${perDay < 1 ? perDay.toFixed(1) : Math.round(perDay)} per day), counting ${r.need} rounds in a row before an alert${r.skipped.length ? ` · ${r.skipped.length} target(s) skipped` : ''}</div>`;
+  if (r.rows.length) html += `<details ${r.rows.length <= 8 ? 'open' : ''}><summary>Show targets</summary><div class="plist"><table>${r.rows.map(x => `<tr>
+      <td><b>${esc(x.name)}</b> <span class="badge">IPv${x.family}</span>${x.open ? ' <span class="akind loss" style="font-size:11px">now</span>' : ''}<div class="muted small">${esc(x.group)}</div></td>
+      <td class="small" style="white-space:nowrap">${x.alerts}× · ${fmtDur(x.minutes * 60)}<div class="muted">worst ${x.worst.toFixed(0)}%${x.down ? ` · ${x.down}× down` : ''}</div></td>
+      <td style="text-align:right"><button type="button" class="btn sm" data-skip="${x.target_id}">🔕 Skip</button></td></tr>`).join('')}</table></div></details>`;
+  if (r.skipped.length) html += `<details><summary>Skipped targets (${r.skipped.length})</summary><div class="plist"><table>${r.skipped.map(x => `<tr><td>🔕 ${esc(x.name)}</td>
+      <td style="text-align:right"><button type="button" class="btn sm" data-unskip="${x.id}">Include again</button></td></tr>`).join('')}</table></div></details>`;
+  box.innerHTML = html;
+  $('#pvDays').onchange = e => { gPrevDays = +e.target.value; loadPreview(g); };
+  box.onclick = async e => {
+    const b = e.target.closest('[data-skip],[data-unskip]'); if (!b) return;
+    const skip = !!b.dataset.skip, id = +(b.dataset.skip || b.dataset.unskip);
+    try {
+      await api('api/admin/targets/bulk', {method: 'POST', body: {action: skip ? 'alerts_off' : 'alerts_on', ids: [id]}});
+      toast(skip ? 'No alerts for this target' : 'Alerts on for this target');
+      const t = A.data.targets.find(x => x.id === id); if (t) t.alert_skip = skip;
+      A.skipChanged = true;
+      loadPreview(g);
+    } catch(err){ toast(err.message, true); }
+  };
+}
 
 // ---------- IPv6 tab ----------
 function viewIpv6(){
