@@ -33,6 +33,11 @@ def with_contacts(s, store):
     return dict(s, telegram_chat_ids=", ".join(dict.fromkeys(ids)))
 
 
+def target_chats(target, cfg):
+    """Extra chats for one target: its own plus those of its group and parent groups."""
+    return list(dict.fromkeys(chat_list(target.get("alert_chat_ids")) + list(cfg.get("chats") or [])))
+
+
 def tg_token(s):
     return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or s.get("telegram_bot_token", "")
 
@@ -278,7 +283,7 @@ class Alerter:
         self.store.prune_alerts(ts - 90 * 86400)
         if not s["alert_recovery"]:
             events = [e for e in events if e[0] != "resolved"]
-        return [e for e in events if e[3].get("email") or e[3].get("telegram") or chat_list(e[2].target.get("alert_chat_ids"))]
+        return [e for e in events if e[3].get("email") or e[3].get("telegram") or target_chats(e[2].target, e[3])]
 
     def _close(self, a, ts):
         a["ended"] = ts
@@ -325,7 +330,7 @@ class Alerter:
         # extra chats per target: only messages about their own target(s)
         per_chat = {}
         for e in events:
-            for chat in chat_list(e[2].target.get("alert_chat_ids")):
+            for chat in target_chats(e[2].target, e[3]):
                 per_chat.setdefault(chat, []).append(e)
         for chat, evs in per_chat.items():
             if not tg_token(s):

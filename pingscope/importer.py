@@ -223,6 +223,11 @@ def apply(store, tree, mode="merge"):
         if gid is None:
             gid = store.create_group(name, parent_id, g.get("sort_mode") if g.get("sort_mode") in ("manual", "name") else "manual",
                                      bool(g.get("hidden")))
+            if g.get("alert_chat_ids"):
+                try:
+                    store.set_group_chats(gid, g["alert_chat_ids"])
+                except ValueError:
+                    pass
             if g.get("alert_mode") in ("off", "on"):
                 try:
                     store.set_alerts(gid, g["alert_mode"], g.get("alert_loss"), g.get("alert_down", True),
@@ -263,6 +268,7 @@ def export(store, include_settings=True):
                 "alert_mode": g.get("alert_mode", "inherit"), "alert_loss": g.get("alert_loss"),
                 "alert_down": bool(g.get("alert_down", True)), "alert_email": bool(g.get("alert_email", True)),
                 "alert_telegram": bool(g.get("alert_telegram", True)), "alert_rounds": g.get("alert_rounds"),
+                "alert_chat_ids": g.get("alert_chat_ids", ""),
                 "targets": [{k: t[k] for k in keep} for t in targets if t["group_id"] == g["id"]],
                 "groups": walk(g["id"]),
             })

@@ -110,7 +110,7 @@ def verify_password(pw, stored):
         return False
 
 
-GROUP_COLS = "id, parent_id, name, sort, sort_mode, hidden, alert_mode, alert_loss, alert_down, alert_email, alert_telegram, alert_rounds"
+GROUP_COLS = "id, parent_id, name, sort, sort_mode, hidden, alert_mode, alert_loss, alert_down, alert_email, alert_telegram, alert_rounds, alert_chat_ids"
 
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
 ROLES = ("admin", "viewer")
@@ -143,7 +143,8 @@ class Store:
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1"),
-                         ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_rounds", "INTEGER")):
+                         ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_rounds", "INTEGER"),
+                         ("alert_chat_ids", "TEXT NOT NULL DEFAULT ''")):
             if col not in gcols:
                 self.c.execute(f"ALTER TABLE groups ADD COLUMN {col} {ddl}")
         self.lock = threading.RLock()
@@ -207,6 +208,12 @@ class Store:
                                     "loss": src["alert_loss"] if on else None, "down": on and src["alert_down"],
                                     "email": on and src["alert_email"], "telegram": on and src["alert_telegram"],
                                     "rounds": src["alert_rounds"] if on else None}  # None = the global setting
+        for g in out:  # extra Telegram chats: this group's and all parent groups' together
+            chats, p = [], g
+            while p is not None:
+                chats = [x for x in re.split(r"[\s,;]+", p["alert_chat_ids"]) if x] + chats
+                p = by.get(p["parent_id"])
+            g["alert_effective"]["chats"] = list(dict.fromkeys(chats))
         for g in out:  # effective visibility: a group is hidden when it or any parent group is hidden
             g["hidden"] = bool(g["hidden"])
             p, hid = g["parent_id"], g["hidden"]
@@ -278,6 +285,14 @@ class Store:
             self.c.execute("UPDATE groups SET alert_mode=?, alert_loss=?, alert_down=?, alert_email=?, alert_telegram=?, "
                            "alert_rounds=? WHERE id=?",
                            (mode, loss, 1 if down else 0, 1 if email else 0, 1 if telegram else 0, rounds, gid))
+
+    def set_group_chats(self, gid, value):
+        ids = [x for x in re.split(r"[\s,;]+", str(value or "").strip()) if x]
+        bad = [x for x in ids if not re.fullmatch(r"-?\d{3,20}|@[A-Za-z]\w{4,31}", x)]
+        if bad:
+            raise ValueError(f"Not a Telegram chat ID: {', '.join(bad[:3])}")
+        with self.lock, self.c:
+            self.c.execute("UPDATE groups SET alert_chat_ids=? WHERE id=?", (", ".join(dict.fromkeys(ids))[:500], gid))
 
     def set_sort_mode(self, gid, sort_mode, include_subgroups=False):
         ids = [gid, *(self.descendants(gid) if include_subgroups else [])]
@@ -487,10 +502,8 @@ class Store:
                         raise KeyError("Contact not found")
                     self.c.execute("UPDATE telegram_contacts SET chat_id=?, label=?, is_default=? WHERE id=?",
                                    (chat_id, label, 1 if is_default else 0, cid))
-                    if old[0] != chat_id:  # keep targets pointing at this contact
-                        for t in self._q("SELECT id, alert_chat_ids FROM targets WHERE alert_chat_ids != ''"):
-                            ids = [chat_id if x == old[0] else x for x in re.split(r"[\s,;]+", t[1]) if x]
-                            self.c.execute("UPDATE targets SET alert_chat_ids=? WHERE id=?", (", ".join(dict.fromkeys(ids)), t[0]))
+                    if old[0] != chat_id:  # keep targets and groups pointing at this contact
+                        self._swap_chat(old[0], chat_id)
                     return cid
                 return self.c.execute("INSERT INTO telegram_contacts(chat_id, label, is_default) VALUES (?,?,?)",
                                       (chat_id, label, 1 if is_default else 0)).lastrowid
@@ -501,15 +514,20 @@ class Store:
         r = self._one("SELECT chat_id FROM telegram_contacts WHERE id=?", (cid,))
         if not r:
             return 0
-        n = 0
         with self.lock, self.c:
             self.c.execute("DELETE FROM telegram_contacts WHERE id=?", (cid,))
-            for t in self._q("SELECT id, alert_chat_ids FROM targets WHERE alert_chat_ids != ''"):
-                ids = [x for x in re.split(r"[\s,;]+", t[1]) if x]
-                if r[0] in ids:
+            return self._swap_chat(r[0], None)
+
+    def _swap_chat(self, old, new):
+        """Replace (or with new=None remove) a chat ID on all targets and groups. Returns how many changed."""
+        n = 0
+        for table in ("targets", "groups"):
+            for row in self._q(f"SELECT id, alert_chat_ids FROM {table} WHERE alert_chat_ids != ''"):
+                ids = [x for x in re.split(r"[\s,;]+", row[1]) if x]
+                if old in ids:
                     n += 1
-                    self.c.execute("UPDATE targets SET alert_chat_ids=? WHERE id=?",
-                                   (", ".join(x for x in ids if x != r[0]), t[0]))
+                    ids = [new if x == old else x for x in ids if new or x != old]
+                    self.c.execute(f"UPDATE {table} SET alert_chat_ids=? WHERE id=?", (", ".join(dict.fromkeys(ids)), row[0]))
         return n
 
     def open_alerts(self):

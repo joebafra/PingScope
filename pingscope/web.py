@@ -368,6 +368,8 @@ def create_group(body: dict = Body(...)):
     try:
         gid = store.create_group(body.get("name"), body.get("parent_id"), body.get("sort_mode") or "manual",
                                  bool(body.get("hidden")))
+        if body.get("alert_chat_ids"):
+            store.set_group_chats(gid, body["alert_chat_ids"])
         if body.get("alert_mode"):
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
@@ -385,6 +387,8 @@ def update_group(gid: int, body: dict = Body(...)):
             store.set_sort_mode(gid, body["sort_mode"], bool(body.get("sort_subgroups")))
         if "hidden" in body:
             store.set_hidden(gid, bool(body["hidden"]))
+        if "alert_chat_ids" in body:
+            store.set_group_chats(gid, body["alert_chat_ids"])
         if "alert_mode" in body:
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
@@ -681,6 +685,7 @@ def alert_list():
     return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
             "telegram_problem": alerts_mod.telegram_ready(alerts_mod.with_contacts(s, store)),
             "target_chats": sum(1 for t in targets.values() if t.get("alert_chat_ids")),
+            "group_chats": sum(1 for g in groups.values() if g.get("alert_chat_ids")),
             "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,
             "groups_on": sum(1 for g in groups.values() if g["alert_mode"] == "on")}
 

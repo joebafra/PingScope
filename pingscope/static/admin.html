@@ -125,7 +125,7 @@ tr.off td{opacity:.5}
     <div class="field" data-f="alert_chat_ids"><span>Also send alerts for this target to <span class="faint">(Telegram, optional)</span></span>
       <div id="tgPick" class="tgpick"></div>
       <div class="row"><input name="alert_chat_ids" placeholder="other chat IDs, e.g. 123456789" autocomplete="off" spellcheck="false"><button type="button" class="btn" id="tgTest">Send test alert</button></div>
-      <div class="help">E.g. the customer of this connection. These chats only get messages about this target, without group names. Needs notifications on for the group. Save people once under Admin → Alerts → Telegram contacts.</div></div>
+      <div class="help">E.g. the customer of this connection. These chats only get messages about this target, without group names. Needs notifications on for the group. Chats set on the group are added automatically ("via group"). Save people once under Admin → Alerts → Telegram contacts.</div></div>
     <label class="field" data-f="alert_rounds"><span>Rounds in a row before alerting <span class="faint">(optional)</span></span>
       <input name="alert_rounds" type="number" min="1" max="60" style="width:140px" placeholder="group setting">
       <div class="help">Override for this target only, e.g. 1 for a critical link or 5 for a flaky one. Empty = the group's setting.</div></label>
@@ -166,10 +166,14 @@ tr.off td{opacity:.5}
           <div class="help">How many measurement rounds in a row a problem must last before an alert (and good rounds before it's resolved). Empty = the default in Settings. Subgroups following this group use it too; a single target can override it.</div></label>
         <label class="check"><input type="checkbox" name="alert_down"> <span><b>Alert when down</b><br><span class="muted small">No replies at all (100% loss).</span></span></label>
         <label class="check"><input type="checkbox" name="alert_telegram"> <span><b>Send a Telegram message</b><br><span class="muted small">To the chat IDs in Settings → Notifications.</span></span></label>
-        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">With neither, alerts are only listed under Admin → Alerts (and sent to a target's own chat IDs).</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">With neither, alerts are only listed under Admin → Alerts (and sent to the extra chats below or on targets).</span></span></label>
         <div id="alertPreview" class="apreview"></div>
         <div class="muted small" style="margin-top:6px">Applies to this group and its subgroups that are set to "Same as the parent group".</div>
       </div>
+      <div class="field" id="alertChatsField"><span>Also send alerts for this group to <span class="faint">(Telegram, optional)</span></span>
+          <div id="gTgPick" class="tgpick"></div>
+          <div class="row"><input name="alert_chat_ids" placeholder="other chat IDs, e.g. 123456789" autocomplete="off" spellcheck="false"><button type="button" class="btn" id="gTgTest">Send test alert</button></div>
+          <div class="help">E.g. a customer or colleague responsible for these connections. They get messages about the targets in this group and its subgroups only, without group names. Works next to the Telegram/email switches. Also possible when the group follows its parent group's settings.</div></div>
     </div>
   </div>
   <div class="dfoot"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>

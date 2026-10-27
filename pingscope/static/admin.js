@@ -318,13 +318,9 @@ function openTarget(t, gid){
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
   tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
-  const ids = (p.alert_chat_ids || '').split(/[\s,;]+/).filter(Boolean), cts = A.data.contacts || [];
-  const known = new Set(cts.map(c => c.chat_id));
-  $('#tgPick').innerHTML = cts.length ? cts.map(c => `<label title="${esc(c.chat_id)}"><input type="checkbox" value="${esc(c.chat_id)}" ${ids.includes(c.chat_id) ? 'checked' : ''}> ${esc(c.label)}${c.is_default ? ' <span class="faint small">(gets all alerts)</span>' : ''}</label>`).join('')
-    : '<span class="muted small">No saved Telegram contacts yet — add them under Admin → Alerts, or enter chat IDs below.</span>';
-  tform.alert_chat_ids.value = ids.filter(i => !known.has(i)).join(', ');
+  chatPicker('#tgPick', tform.alert_chat_ids, p.alert_chat_ids, A.groupMap.get(p.group_id)?.alert_effective?.chats || []);
   $('#tgTest').onclick = async () => {
-    const chats = targetChats();
+    const chats = pickedChats('#tgPick', tform.alert_chat_ids, true);
     if (!chats) return toast('Select a contact or enter a chat ID first', true);
     try { const x = await api('api/admin/alerts/test-alert', {method: 'POST', body: {target_id: editing?.id, chat_ids: chats}}); toast(`Test alert sent: ${x.sent.join(', ')}` + (x.errors.length ? ` — failed: ${x.errors.join('; ')}` : ''), !!x.errors.length); }
     catch(err){ toast(err.message, true); }
@@ -348,7 +344,7 @@ function probeChanged(){
 tform.probe.onchange = probeChanged;
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
-  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = targetChats(); fd.alert_rounds = tform.alert_rounds.value;
+  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = pickedChats('#tgPick', tform.alert_chat_ids); fd.alert_rounds = tform.alert_rounds.value;
   fd.group_id = +fd.group_id;
   return fd;
 }
@@ -397,9 +393,22 @@ $('#lookupBtn').onclick = async () => {
   box.onclick = e => { const b = e.target.closest('button[data-a]'); if (b){ tform.host_v6.value = b.dataset.a; } };
 };
 
-function targetChats(){
-  const picked = $$('#tgPick input:checked').map(i => i.value);
-  return [...new Set([...picked, ...tform.alert_chat_ids.value.split(/[\s,;]+/).filter(Boolean)])].join(', ');
+// Telegram chat picker: saved contacts as checkboxes + a field for other IDs.
+// inherited = chats that already come from (parent) groups: shown ticked and locked.
+function chatPicker(box, input, value, inherited = []){
+  const ids = String(value || '').split(/[\s,;]+/).filter(Boolean), cts = A.data.contacts || [];
+  const known = new Set(cts.map(c => c.chat_id)), inh = new Set(inherited);
+  $(box).innerHTML = cts.length ? cts.map(c => {
+    const via = inh.has(c.chat_id) && !ids.includes(c.chat_id);
+    return `<label title="${esc(c.chat_id)}"><input type="checkbox" value="${esc(c.chat_id)}" ${ids.includes(c.chat_id) || via ? 'checked' : ''} ${via ? 'disabled data-via="1"' : ''}> ${esc(c.label)}${via ? ' <span class="faint small">(via group)</span>' : c.is_default ? ' <span class="faint small">(gets all alerts)</span>' : ''}</label>`;
+  }).join('') : '<span class="muted small">No saved Telegram contacts yet — add them under Admin → Alerts, or enter chat IDs below.</span>';
+  const other = [...inh].filter(i => !known.has(i));
+  if (other.length) $(box).insertAdjacentHTML('beforeend', `<span class="faint small">via group: ${other.map(esc).join(', ')}</span>`);
+  input.value = ids.filter(i => !known.has(i)).join(', ');
+}
+function pickedChats(box, input, withInherited){
+  const picked = $$(`${box} input:checked`).filter(i => withInherited || !i.dataset.via).map(i => i.value);
+  return [...new Set([...picked, ...input.value.split(/[\s,;]+/).filter(Boolean)])].join(', ');
 }
 
 // ---------- group dialog ----------
@@ -419,11 +428,22 @@ function openGroup(g, parentId){
   gform.alert_down.checked = g ? g.alert_down : true;
   gform.alert_email.checked = g ? g.alert_email : true;
   gform.alert_telegram.checked = g ? g.alert_telegram : true;
+  const parentChats = A.groupMap.get(g ? g.parent_id : parentId)?.alert_effective?.chats || [];
+  chatPicker('#gTgPick', gform.alert_chat_ids, g?.alert_chat_ids, parentChats);
+  $('#gTgTest').onclick = async () => {
+    const chats = pickedChats('#gTgPick', gform.alert_chat_ids, true);
+    if (!chats) return toast('Select a contact or enter a chat ID first', true);
+    const t = g && A.data.targets.find(x => new Set([g.id, ...descendants(g.id)]).has(x.group_id));
+    try { const x = await api('api/admin/alerts/test-alert', {method: 'POST', body: {target_id: t?.id, chat_ids: chats}}); toast(`Test alert sent: ${x.sent.join(', ')}` + (x.errors.length ? ` — failed: ${x.errors.join('; ')}` : ''), !!x.errors.length); }
+    catch(err){ toast(err.message, true); }
+  };
   gform.alert_rounds.value = g?.alert_rounds ?? ''; gform.alert_rounds.placeholder = `default: ${A.data.settings.alert_after_rounds}`;
   const parent = () => A.groupMap.get(gform.parent_id.value ? +gform.parent_id.value : null);
   const syncAlert = () => {
     const m = gform.alert_mode.value;
     $('#alertFields').classList.toggle('hidden', m !== 'on');
+    const p0 = parent(), eff = m === 'on' || (m === 'inherit' && p0?.alert_effective?.on);
+    $('#alertChatsField').classList.toggle('hidden', !eff);
     const p = parent();
     $('#alertInherit').textContent = m !== 'inherit' ? '' : p ? `Now: ${alertSummary(p, true)} (from ${p.alert_effective.from ? A.groupMap.get(p.alert_effective.from)?.name : 'default'})` : 'Top-level group: inherit means off.';
   };
@@ -450,7 +470,8 @@ gform.addEventListener('submit', async e => {
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
-                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_rounds: gform.alert_rounds.value};
+                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_rounds: gform.alert_rounds.value,
+                alert_chat_ids: pickedChats('#gTgPick', gform.alert_chat_ids)};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
     else { const r = await api('api/admin/groups', {method: 'POST', body}); A.gid = r.id; store.set('psa_gid', r.id); }
@@ -687,7 +708,7 @@ async function viewAlerts(){
       <p class="muted small" style="margin:6px 0 10px">Alerts are set per group: open a group under <a href="#targets">Targets</a> → Edit group → Notifications. ${r.groups_on ? `${r.groups_on} group(s) have notifications on.` : '<b>No group has notifications on yet.</b>'} Telegram and email settings are under <a href="#settings">Settings</a> → Notifications.</p>
       <div class="small" style="margin:0 0 10px">Telegram: ${r.telegram_problem ? `<span class="muted">not set up (${esc(r.telegram_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
         Email: ${r.email_problem ? `<span class="muted">not set up (${esc(r.email_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'}
-        ${r.target_chats ? ` · ${r.target_chats} target(s) with their own chat IDs` : ''}</div>
+        ${r.target_chats || r.group_chats ? ` · own chat IDs on ${[r.group_chats && `${r.group_chats} group(s)`, r.target_chats && `${r.target_chats} target(s)`].filter(Boolean).join(' and ')}` : ''}</div>
       ${r.last_error ? `<div class="warnbox">${esc(r.last_error)}</div>` : ''}
       <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><button class="btn primary" id="testAlert">Send test alert</button><button class="btn" id="findChats">Find chat IDs</button>
       <span class="muted small">${r.last_sent ? `Last alert sent: ${fmtShort(r.last_sent)}` : ''}</span></div>
