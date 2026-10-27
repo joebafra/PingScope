@@ -269,9 +269,21 @@ Run the installer and leave the hostname empty. PingScope then listens on `http:
 
 ---
 
-## 4a. Email notifications (Lettermint)
+## 4a. Notifications: Telegram and email
 
-PingScope can email you when targets have packet loss or are down. Emails are sent through [Lettermint](https://lettermint.co).
+PingScope can alert you when targets have packet loss or are down, by **Telegram** and/or **email** (via [Lettermint](https://lettermint.co)). Set up one or both.
+
+### Telegram
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`) and copy its token.
+2. Open your bot in Telegram and send it **/start** (or add the bot to a group and send a message there).
+3. **Admin → Settings → Notifications:** paste the *Telegram bot token* and save.
+4. **Admin → Alerts → Find chat IDs:** shows the chats that wrote to your bot. Copy your ID into *Settings → Notifications → Telegram chat IDs* and save.
+5. **Admin → Alerts → Send test Telegram message.**
+
+**Alerts for a customer:** in a target's edit dialog, fill in *Extra Telegram chat IDs* (the customer first sends /start to your bot; then use *Find chat IDs*). That chat gets messages about that target only, without group names. Notifications must be on for the target's group. *Send test* in the dialog checks it.
+
+### Email (Lettermint)
 
 1. **In Lettermint:** add and verify your sending domain (for example `joebafra.nl`), then create a **Project API token** in the project settings.
 2. **In PingScope → Admin → Settings → Notifications:**
@@ -280,15 +292,18 @@ PingScope can email you when targets have packet loss or are down. Emails are se
    - *Lettermint API token*: paste the token. It is stored on the server and never shown again.
    - Optionally change *Rounds in a row before alerting* (default 3), *Email when resolved* and the reminder interval.
 3. **Admin → Alerts → Send test email** to check that everything works.
-4. **Turn alerts on per group:** Admin → Targets → select a group → *Edit group* → *Notifications: On*. Set the packet-loss percentage (for example 10%), whether to alert when a target is down (no replies at all), and whether to send an email. Subgroups set to *Same as the parent group* follow the group above them.
 
-While you edit the group, a **preview** shows how many targets would have alerted with these settings over the last 24 hours, 7 or 14 days, how many alerts and roughly how many emails per day. It lists the targets that would alert, each with a **Skip** button.
+### Turn alerts on per group
+
+Admin → Targets → select a group → *Edit group* → *Notifications: On*. Set the packet-loss percentage (for example 10%), whether to alert when a target is down (no replies at all), and whether to send a Telegram message and/or an email. Subgroups set to *Same as the parent group* follow the group above them.
+
+While you edit the group, a **preview** shows how many targets would have alerted with these settings over the last 24 hours, 7 or 14 days, how many alerts and roughly how many messages per day. It lists the targets that would alert, each with a **Skip** button.
 
 **Skip single targets:** a target with *No alerts for this target* (in its edit dialog, via the 🔕 Skip button in the preview, or with the bulk buttons *🔕 No alerts* / *🔔 Alerts on* after selecting targets) never alerts, even when its group has notifications on. Skipped targets show a 🔕 in the target list.
 
-All alerts that start or end in the same measurement round are combined into one email, so a large outage sends one message instead of hundreds. Active alerts and the history of the last 90 days are listed under **Admin → Alerts**.
+All alerts that start or end in the same measurement round are combined into one message, so a large outage sends one message instead of hundreds. Active alerts and the history of the last 90 days are listed under **Admin → Alerts**.
 
-Instead of entering the token in the admin panel you can put `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so the emails contain links to the dashboard.
+Instead of entering the tokens in the admin panel you can put `TELEGRAM_BOT_TOKEN=...` and/or `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so messages contain links to the graphs.
 
 ## 5. Updating, backups and useful commands
 

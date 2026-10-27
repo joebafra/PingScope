@@ -226,7 +226,7 @@ def apply(store, tree, mode="merge"):
             if g.get("alert_mode") in ("off", "on"):
                 try:
                     store.set_alerts(gid, g["alert_mode"], g.get("alert_loss"), g.get("alert_down", True),
-                                     g.get("alert_email", True))
+                                     g.get("alert_email", True), g.get("alert_telegram", True))
                 except ValueError:
                     pass
             existing_groups.append({"id": gid, "parent_id": parent_id, "name": name})
@@ -252,7 +252,7 @@ def export(store, include_settings=True):
     groups = store.groups()
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
-            "mtr", "enabled", "note", "alert_skip")
+            "mtr", "enabled", "note", "alert_skip", "alert_chat_ids")
 
     def walk(parent_id):
         out = []
@@ -261,6 +261,7 @@ def export(store, include_settings=True):
                 "name": g["name"], "sort_mode": g.get("sort_mode", "manual"), "hidden": bool(g.get("hidden")),
                 "alert_mode": g.get("alert_mode", "inherit"), "alert_loss": g.get("alert_loss"),
                 "alert_down": bool(g.get("alert_down", True)), "alert_email": bool(g.get("alert_email", True)),
+                "alert_telegram": bool(g.get("alert_telegram", True)),
                 "targets": [{k: t[k] for k in keep} for t in targets if t["group_id"] == g["id"]],
                 "groups": walk(g["id"]),
             })

@@ -1,6 +1,7 @@
 """HTTP layer: dashboard + public API, login, and the admin API."""
 import asyncio
 import contextlib
+import html
 import logging
 import math
 import os
@@ -340,7 +341,7 @@ def _public_settings(s):
     """Settings for the admin UI: secrets are never sent back, only whether they are set."""
     s = dict(s)
     for k in settings_mod.SECRETS:
-        s[k + "_set"] = bool(s[k]) or (k == "lettermint_token" and bool(os.environ.get("LETTERMINT_TOKEN")))
+        s[k + "_set"] = bool(s[k]) or bool(os.environ.get(settings_mod.SECRET_ENV.get(k, ""), ""))
         s[k] = ""
     return s
 
@@ -369,7 +370,7 @@ def create_group(body: dict = Body(...)):
                                  bool(body.get("hidden")))
         if body.get("alert_mode"):
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
-                             bool(body.get("alert_email", True)))
+                             bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)))
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -385,7 +386,7 @@ def update_group(gid: int, body: dict = Body(...)):
             store.set_hidden(gid, bool(body["hidden"]))
         if "alert_mode" in body:
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
-                             bool(body.get("alert_email", True)))
+                             bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:
@@ -676,6 +677,8 @@ def alert_list():
             rows.append({**a, "name": t["name"], "group": path(t["group_id"])})
     s = store.settings()
     return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
+            "telegram_problem": alerts_mod.telegram_ready(s),
+            "target_chats": sum(1 for t in targets.values() if t.get("alert_chat_ids")),
             "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,
             "groups_on": sum(1 for g in groups.values() if g["alert_mode"] == "on")}
 
@@ -743,6 +746,31 @@ def alert_preview(body: dict = Body(...)):
     return {"days": days, "targets": len(active), "skipped": [{"id": t["id"], "name": t["name"]} for t in skipped],
             "targets_alerting": len({r["target_id"] for r in rows}), "alerts": n_alerts, "emails": len(emails),
             "rows": rows[:100], "need": need, "has_data": any(hist.values())}
+
+
+@admin.get("/telegram/chats")
+async def telegram_chats():
+    try:
+        return {"chats": await asyncio.to_thread(alerts_mod.telegram_chats, store.settings())}
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
+@admin.post("/alerts/test-telegram")
+async def alert_test_telegram(body: dict = Body(default={})):
+    s = store.settings()
+    chats = alerts_mod.chat_list(body.get("chat_id")) or alerts_mod.chat_list(s["telegram_chat_ids"])
+    if not chats:
+        raise HTTPException(400, "No Telegram chat ID set. Add one in Settings → Notifications.")
+    site = html.escape(s.get("site_title") or "PingScope")
+    msg = (f"✅ <b>{site}</b>\nTest message from PingScope. Alerts "
+           + ("for this connection " if body.get("chat_id") else "") + "will arrive in this chat.")
+    try:
+        for c in chats:
+            await asyncio.to_thread(alerts_mod.send_telegram, s, c, msg)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "to": chats}
 
 
 @admin.post("/alerts/test")

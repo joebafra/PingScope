@@ -118,6 +118,9 @@ tr.off td{opacity:.5}
     </div>
     <label class="check"><input type="checkbox" name="mtr"> <span>Run mtr traceroutes for this target</span></label>
     <label class="check"><input type="checkbox" name="enabled"> <span>Enabled</span></label>
+    <label class="field" data-f="alert_chat_ids"><span>Extra Telegram chat IDs <span class="faint">(optional)</span></span>
+      <div class="row"><input name="alert_chat_ids" placeholder="e.g. 123456789" autocomplete="off" spellcheck="false"><button type="button" class="btn" id="tgTest">Send test</button></div>
+      <div class="help">Alerts for this target also go to these chats, e.g. the customer of this connection. They only get messages about this target, without group names. Needs notifications on for the group. The person first sends /start to your bot; then find the ID under Admin → Alerts → Find chat IDs.</div></label>
     <label class="check"><input type="checkbox" name="alert_skip"> <span>No alerts for this target <span class="muted small">(skip it when its group has notifications on)</span></span></label>
     <label class="field" data-f="note"><span>Note <span class="faint">(only visible here)</span></span><textarea name="note" rows="2" style="font-family:inherit;font-size:13px"></textarea></label>
     <div class="testres" id="testRes"></div>
@@ -151,7 +154,8 @@ tr.off td{opacity:.5}
           <span class="row" style="gap:6px;align-items:center"><input name="alert_loss" type="number" min="1" max="100" placeholder="e.g. 10" style="width:110px"> <span class="muted">% or more</span></span>
           <div class="help">Leave empty for no packet-loss alerts.</div></label>
         <label class="check"><input type="checkbox" name="alert_down"> <span><b>Alert when down</b><br><span class="muted small">No replies at all (100% loss).</span></span></label>
-        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">Without email, alerts are only listed under Admin → Alerts.</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_telegram"> <span><b>Send a Telegram message</b><br><span class="muted small">To the chat IDs in Settings → Notifications.</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">With neither, alerts are only listed under Admin → Alerts (and sent to a target's own chat IDs).</span></span></label>
         <div id="alertPreview" class="apreview"></div>
         <div class="muted small" style="margin-top:6px">Applies to this group and its subgroups that are set to "Same as the parent group".</div>
       </div>

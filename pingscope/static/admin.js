@@ -309,7 +309,7 @@ const tdlg = $('#tdlg'), tform = $('#tform');
 let editing = null;
 function openTarget(t, gid){
   editing = t;
-  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, note: '', group_id: gid};
+  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', note: '', group_id: gid};
   $('#tdlgTitle').textContent = t ? 'Edit target' : 'Add target';
   tform.group_id.innerHTML = groupOptions(p.group_id);
   tform.probe.innerHTML = A.data.probes.map(x => `<option value="${x.name}">${esc(x.label)}</option>`).join('');
@@ -317,7 +317,12 @@ function openTarget(t, gid){
   tform.dns_type.innerHTML = A.data.dns_types.map(x => `<option>${x}</option>`).join('');
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
-  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip;
+  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_chat_ids.value = p.alert_chat_ids || '';
+  $('#tgTest').onclick = async () => {
+    if (!tform.alert_chat_ids.value.trim()) return toast('Enter a chat ID first', true);
+    try { const x = await api('api/admin/alerts/test-telegram', {method: 'POST', body: {chat_id: tform.alert_chat_ids.value}}); toast(`Test message sent to ${x.to.join(', ')}`); }
+    catch(err){ toast(err.message, true); }
+  };
   $('#tDelete').classList.toggle('hidden', !t);
   $('#testRes').innerHTML = ''; $('#lookupRes').innerHTML = '';
   markErrors(tform, {});
@@ -337,7 +342,7 @@ function probeChanged(){
 tform.probe.onchange = probeChanged;
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
-  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked;
+  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = tform.alert_chat_ids.value;
   fd.group_id = +fd.group_id;
   return fd;
 }
@@ -402,6 +407,7 @@ function openGroup(g, parentId){
   gform.alert_loss.value = g?.alert_loss ?? '';
   gform.alert_down.checked = g ? g.alert_down : true;
   gform.alert_email.checked = g ? g.alert_email : true;
+  gform.alert_telegram.checked = g ? g.alert_telegram : true;
   const parent = () => A.groupMap.get(gform.parent_id.value ? +gform.parent_id.value : null);
   const syncAlert = () => {
     const m = gform.alert_mode.value;
@@ -432,7 +438,7 @@ gform.addEventListener('submit', async e => {
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
-                alert_email: gform.alert_email.checked};
+                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
     else { const r = await api('api/admin/groups', {method: 'POST', body}); A.gid = r.id; store.set('psa_gid', r.id); }
@@ -455,7 +461,7 @@ async function loadPreview(g){
   let html = `<div class="muted small">Preview with these settings · ${days}</div>`;
   if (!r.has_data) html += `<div class="big">No measurement data for this period yet.</div>`;
   else html += `<div class="big"><b>${r.targets_alerting}</b> of ${r.targets} targets would have alerted · <b>${r.alerts}</b> alert${r.alerts === 1 ? '' : 's'}</div>` +
-    `<div class="muted small">≈ ${r.emails} email${r.emails === 1 ? '' : 's'} (${perDay < 1 ? perDay.toFixed(1) : Math.round(perDay)} per day), counting ${r.need} rounds in a row before an alert${r.skipped.length ? ` · ${r.skipped.length} target(s) skipped` : ''}</div>`;
+    `<div class="muted small">≈ ${r.emails} message${r.emails === 1 ? '' : 's'} (${perDay < 1 ? perDay.toFixed(1) : Math.round(perDay)} per day), counting ${r.need} rounds in a row before an alert${r.skipped.length ? ` · ${r.skipped.length} target(s) skipped` : ''}</div>`;
   if (r.rows.length) html += `<details ${r.rows.length <= 8 ? 'open' : ''}><summary>Show targets</summary><div class="plist"><table>${r.rows.map(x => `<tr>
       <td><b>${esc(x.name)}</b> <span class="badge">IPv${x.family}</span>${x.open ? ' <span class="akind loss" style="font-size:11px">now</span>' : ''}<div class="muted small">${esc(x.group)}</div></td>
       <td class="small" style="white-space:nowrap">${x.alerts}× · ${fmtDur(x.minutes * 60)}<div class="muted">worst ${x.worst.toFixed(0)}%${x.down ? ` · ${x.down}× down` : ''}</div></td>
@@ -651,7 +657,8 @@ function alertSummary(g, plain){
   const parts = [];
   if (e.loss) parts.push(`loss ≥ ${e.loss}%`);
   if (e.down) parts.push('down');
-  return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')}${e.email ? ', with email' : ', no email'}`;
+  const ch = [e.telegram && 'Telegram', e.email && 'email'].filter(Boolean);
+  return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')}, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
 }
 const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
 async function viewAlerts(){
@@ -665,13 +672,29 @@ async function viewAlerts(){
   const table = (rows, empty) => rows.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Status</th><th>Target</th><th>When</th><th>Loss</th><th></th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>` : `<p class="muted">${empty}</p>`;
   main.innerHTML = `<div style="max-width:1000px">
     <div class="card pad" style="margin-bottom:16px"><h2>Notifications</h2>
-      <p class="muted small" style="margin:6px 0 10px">Alerts are set per group: open a group under <a href="#targets">Targets</a> → Edit group → Notifications. ${r.groups_on ? `${r.groups_on} group(s) have notifications on.` : '<b>No group has notifications on yet.</b>'} Email settings (Lettermint) are under <a href="#settings">Settings</a> → Notifications.</p>
-      ${r.email_problem ? `<div class="warnbox">Email is not set up yet: ${esc(r.email_problem)}.</div>` : ''}
+      <p class="muted small" style="margin:6px 0 10px">Alerts are set per group: open a group under <a href="#targets">Targets</a> → Edit group → Notifications. ${r.groups_on ? `${r.groups_on} group(s) have notifications on.` : '<b>No group has notifications on yet.</b>'} Telegram and email settings are under <a href="#settings">Settings</a> → Notifications.</p>
+      <div class="small" style="margin:0 0 10px">Telegram: ${r.telegram_problem ? `<span class="muted">not set up (${esc(r.telegram_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
+        Email: ${r.email_problem ? `<span class="muted">not set up (${esc(r.email_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'}
+        ${r.target_chats ? ` · ${r.target_chats} target(s) with their own chat IDs` : ''}</div>
       ${r.last_error ? `<div class="warnbox">${esc(r.last_error)}</div>` : ''}
-      <div class="row" style="gap:10px;align-items:center"><button class="btn" id="testMail">Send test email</button>
-      <span class="muted small">${r.last_sent ? `Last alert email: ${fmtShort(r.last_sent)}` : ''}</span></div></div>
+      <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><button class="btn" id="testTg">Send test Telegram message</button><button class="btn" id="findChats">Find chat IDs</button><button class="btn" id="testMail">Send test email</button>
+      <span class="muted small">${r.last_sent ? `Last alert sent: ${fmtShort(r.last_sent)}` : ''}</span></div>
+      <div id="chatList"></div></div>
     <div class="card pad" style="margin-bottom:16px"><h2>Active alerts (${open.length})</h2><div style="margin-top:10px">${table(open, 'Everything is fine.')}</div></div>
     <div class="card pad"><h2>History</h2><p class="muted small" style="margin:4px 0 10px">Resolved alerts of the last 90 days.</p>${table(done, 'No resolved alerts yet.')}</div></div>`;
+  $('#testTg').onclick = async () => {
+    try { const x = await api('api/admin/alerts/test-telegram', {method: 'POST', body: {}}); toast(`Test message sent to ${x.to.join(', ')}`); }
+    catch(err){ toast(err.message, true); }
+  };
+  $('#findChats').onclick = async () => {
+    const box = $('#chatList'); box.innerHTML = '<p class="muted small">Asking Telegram…</p>';
+    try {
+      const {chats} = await api('api/admin/telegram/chats');
+      box.innerHTML = chats.length ? `<p class="small" style="margin:12px 0 6px">Chats that recently wrote to your bot:</p><div class="tblwrap"><table class="tbl"><tbody>${chats.map(c => `<tr><td><b>${esc(c.name || '(no name)')}</b> <span class="muted small">${esc(c.type || '')}</span></td><td class="mono">${c.id}</td><td class="acts"><button class="btn sm" data-copy="${c.id}">Copy</button></td></tr>`).join('')}</tbody></table></div><p class="muted small">Put your own ID in Settings → Notifications → Telegram chat IDs. A customer's ID goes in that target's "Extra Telegram chat IDs".</p>`
+        : '<p class="small" style="margin:12px 0 0">No chats found. Open your bot in Telegram, send <b>/start</b> (or add the bot to a group and send a message there), then click Find chat IDs again. Telegram only remembers messages of the last 24 hours.</p>';
+      box.onclick = e => { const b = e.target.closest('[data-copy]'); if (b){ navigator.clipboard?.writeText(b.dataset.copy); toast('Copied ' + b.dataset.copy); } };
+    } catch(err){ box.innerHTML = `<p class="small" style="color:var(--bad)">${esc(err.message)}</p>`; }
+  };
   $('#testMail').onclick = async () => {
     try { const x = await api('api/admin/alerts/test', {method: 'POST'}); toast(`Test email sent to ${x.to.join(', ')}`); }
     catch(err){ toast(err.message, true); }

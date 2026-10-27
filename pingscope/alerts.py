@@ -1,15 +1,17 @@
-"""Notifications: per-group packet-loss and down alerts, emailed through Lettermint.
+"""Notifications: per-group packet-loss and down alerts, sent by email (Lettermint) and/or Telegram.
 
 Every measurement round each series (target + IP family) is checked against the notification settings of its
 group. A problem must last `alert_after_rounds` rounds before an alert starts, and the same number of good rounds
-before it is resolved. All alerts that start, get worse or end in the same round go out in one email, so a large
-outage gives one message instead of hundreds.
+before it is resolved. All alerts that start, get worse or end in the same round go out in one message, so a
+large outage gives one message instead of hundreds. Targets can have their own extra Telegram chat IDs (e.g. the
+customer of that connection); those chats only get messages about that target.
 """
 import asyncio
 import html
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -17,7 +19,80 @@ import urllib.request
 log = logging.getLogger("pingscope")
 
 LETTERMINT_URL = os.environ.get("LETTERMINT_API_URL", "https://api.lettermint.co/v1/send")
-MAX_LINES = 60  # targets listed per email; the rest is summarised
+TELEGRAM_API = os.environ.get("TELEGRAM_API_URL", "https://api.telegram.org")
+MAX_LINES = 60  # targets listed per message; the rest is summarised
+
+
+def chat_list(v):
+    return [x for x in re.split(r"[\s,;]+", str(v or "").strip()) if x]
+
+
+def tg_token(s):
+    return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or s.get("telegram_bot_token", "")
+
+
+def telegram_ready(s, chats=None):
+    if not tg_token(s):
+        return "no Telegram bot token"
+    if chats is None and not chat_list(s.get("telegram_chat_ids")):
+        return "no Telegram chat ID"
+    return None
+
+
+def _tg_call(s, method, payload=None):
+    req = urllib.request.Request(f"{TELEGRAM_API}/bot{tg_token(s)}/{method}",
+                                 data=json.dumps(payload or {}).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "PingScope"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read() or b"{}").get("result")
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.loads(e.read()).get("description") or ""
+        except ValueError:
+            detail = ""
+        if e.code == 401 or e.code == 404:
+            detail = "the bot token is wrong"
+        raise RuntimeError(f"Telegram answered {e.code}: {detail}")
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise RuntimeError(f"Could not reach Telegram: {getattr(e, 'reason', e)}")
+
+
+def send_telegram(s, chat_id, text_html):
+    """Send a message (Telegram HTML) to one chat, split into parts when it is too long."""
+    why = telegram_ready(s, chats=[chat_id])
+    if why:
+        raise RuntimeError(f"Telegram is not set up: {why}")
+    parts, cur = [], ""
+    for line in text_html.split("\n"):
+        if len(cur) + len(line) + 1 > 3900:
+            parts.append(cur)
+            cur = ""
+        cur += line + "\n"
+    parts.append(cur)
+    for part in parts:
+        if part.strip():
+            try:
+                _tg_call(s, "sendMessage", {"chat_id": chat_id, "text": part, "parse_mode": "HTML",
+                                            "disable_web_page_preview": True})
+            except RuntimeError as e:
+                raise RuntimeError(f"chat {chat_id}: {e}")
+
+
+def telegram_chats(s):
+    """Chats that recently wrote to the bot (send /start to it first): [{id, name, type}]."""
+    if not tg_token(s):
+        raise RuntimeError("Enter the Telegram bot token in Settings → Notifications first")
+    out = {}
+    for u in _tg_call(s, "getUpdates", {"limit": 100}) or []:
+        m = u.get("message") or u.get("channel_post") or u.get("my_chat_member") or {}
+        c = m.get("chat")
+        if c:
+            name = c.get("title") or " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x)
+            if c.get("username"):
+                name += f" (@{c['username']})"
+            out[c["id"]] = {"id": c["id"], "name": name.strip(), "type": c.get("type")}
+    return list(out.values())
 
 
 def token(s):
@@ -196,7 +271,7 @@ class Alerter:
         self.store.prune_alerts(ts - 90 * 86400)
         if not s["alert_recovery"]:
             events = [e for e in events if e[0] != "resolved"]
-        return [e for e in events if e[3].get("email")]
+        return [e for e in events if e[3].get("email") or e[3].get("telegram") or chat_list(e[2].target.get("alert_chat_ids"))]
 
     def _close(self, a, ts):
         a["ended"] = ts
@@ -206,25 +281,63 @@ class Alerter:
     async def notify(self, ts, events, s):
         if not events:
             return
-        why = email_ready(s)
-        if why:
-            self.last_error = f"{len(events)} alert email(s) not sent: {why}. Set it up in Admin → Settings → Notifications."
-            log.warning(self.last_error)
-            return
-        subject, text, body = self.compose(ts, events, s)
-        try:
-            await asyncio.to_thread(send_email, s, subject, text, body)
-        except RuntimeError as e:
-            self.last_error = f"Alert email failed at {time.strftime('%Y-%m-%d %H:%M', time.localtime(ts))}: {e}"
+        errors, sent_any = [], False
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
+        mail_used = bool(token(s) or s.get("alert_email_from") or recipients(s))
+        tg_used = bool(tg_token(s) or chat_list(s.get("telegram_chat_ids")))
+        mail = [e for e in events if e[3].get("email")] if mail_used else []
+        tg = [e for e in events if e[3].get("telegram")] if tg_used else []
+        unsent = [e for e in events if (e[3].get("email") or e[3].get("telegram")) and e not in mail and e not in tg]
+        if unsent and not mail and not tg:
+            errors.append(f"{len(unsent)} alert(s) not sent: set up Telegram or email in Settings → Notifications")
+        if mail:
+            why = email_ready(s)
+            if why:
+                errors.append(f"{len(mail)} alert(s) not emailed: {why}")
+            else:
+                subject, text, body = self.compose(ts, mail, s)
+                try:
+                    await asyncio.to_thread(send_email, s, subject, text, body)
+                    sent_any = True
+                    log.info("Alert email sent: %s", subject)
+                except RuntimeError as e:
+                    errors.append(f"Alert email failed at {when}: {e}")
+        if tg:
+            why = telegram_ready(s)
+            if why:
+                errors.append(f"{len(tg)} alert(s) not sent to Telegram: {why}")
+            else:
+                msg = self.compose_telegram(ts, tg, s)
+                for chat in chat_list(s["telegram_chat_ids"]):
+                    try:
+                        await asyncio.to_thread(send_telegram, s, chat, msg)
+                        sent_any = True
+                    except RuntimeError as e:
+                        errors.append(f"Telegram alert failed at {when}: {e}")
+        # extra chats per target: only messages about their own target(s)
+        per_chat = {}
+        for e in events:
+            for chat in chat_list(e[2].target.get("alert_chat_ids")):
+                per_chat.setdefault(chat, []).append(e)
+        for chat, evs in per_chat.items():
+            if not tg_token(s):
+                errors.append("Targets have their own Telegram chat IDs, but no Telegram bot token is set")
+                break
+            try:
+                await asyncio.to_thread(send_telegram, s, chat, self.compose_telegram(ts, evs, s, external=True))
+                sent_any = True
+            except RuntimeError as e:
+                errors.append(f"Telegram alert failed at {when}: {e}")
+        self.last_error = "; ".join(dict.fromkeys(errors)) or None
+        if errors:
             log.error(self.last_error)
-            return
-        self.last_error, self.last_sent = None, ts
-        for _, a, _, _ in events:
-            self.store.update_alert(a["id"], emailed=1, last_email=ts)
-            a["last_email"] = ts
-        log.info("Alert email sent: %s", subject)
+        if sent_any:
+            self.last_sent = ts
+            for _, a, _, _ in events:
+                self.store.update_alert(a["id"], emailed=1, last_email=ts)
+                a["last_email"] = ts
 
-    def compose(self, ts, events, s):
+    def _rows(self, ts, events):
         groups = {g["id"]: g for g in self.store.groups()}
 
         def path(gid):
@@ -234,6 +347,7 @@ class Alerter:
                 gid = groups[gid]["parent_id"]
             return " › ".join(out)
 
+        public = self.store.settings()["public_dashboard"]
         label = {"start": "Problem", "down": "Down", "reminder": "Still a problem", "resolved": "Resolved"}
         order = {"down": 0, "start": 1, "reminder": 2, "resolved": 3}
         events = sorted(events, key=lambda e: (order[e[0]], path(e[2].target["group_id"]), e[2].target["name"]))
@@ -244,11 +358,38 @@ class Alerter:
                 what = f"fine again after {fmt_dur(ts - a['started'])} (worst: {a['peak_loss']:.0f}% loss)"
             elif ev == "reminder":
                 what += f", for {fmt_dur(ts - a['started'])}"
-            elif a["kind"] == "loss":
+            elif a["kind"] == "loss" and cfg.get("loss"):
                 what += f" (threshold {cfg.get('loss')}%)"
+            g = groups.get(x.target["group_id"]) or {}
+            if ev == "start" and a["kind"] == "down":
+                ev = "down"
             rows.append({"ev": ev, "status": label[ev], "name": x.target["name"], "group": path(x.target["group_id"]),
                          "fam": f"IPv{x.family}", "addr": x.address or x.target.get("host") or "", "what": what,
-                         "link": f"{base_url()}#/t/{x.target_id}" if base_url() else ""})
+                         "link": f"{base_url()}#/t/{x.target_id}" if base_url() else "",
+                         "public_link": public and not g.get("hidden_effective")})
+        return rows
+
+    def compose_telegram(self, ts, events, s, external=False):
+        """Telegram HTML message. external=True (a target's own chat): no group names, only public links."""
+        rows = self._rows(ts, events)
+        e = html.escape
+        icon = {"start": "🟠", "down": "🔴", "reminder": "🟠", "resolved": "🟢"}
+        site = s.get("site_title") or "PingScope"
+        lines = [f"<b>{e(site)}</b> · {time.strftime('%d-%m %H:%M', time.localtime(ts))}", ""]
+        for r in rows[:MAX_LINES]:
+            link = r["link"] if r["link"] and (not external or r["public_link"]) else ""
+            name = f'<a href="{e(link)}">{e(r["name"])}</a>' if link else f"<b>{e(r['name'])}</b>"
+            lines.append(f"{icon[r['ev']]} <b>{e(r['status'])}</b>: {name} ({e(r['fam'])})")
+            lines.append(f"    {e(r['what'])}")
+            detail = r["addr"] if external else f"{r['group']} · {r['addr']}"
+            if detail:
+                lines.append(f"    <i>{e(detail)}</i>")
+        if len(rows) > MAX_LINES:
+            lines.append(f"\n… and {len(rows) - MAX_LINES} more.")
+        return "\n".join(lines)
+
+    def compose(self, ts, events, s):
+        rows = self._rows(ts, events)
         bad = [r for r in rows if r["ev"] != "resolved"]
         ok = [r for r in rows if r["ev"] == "resolved"]
         site = s.get("site_title") or "PingScope"

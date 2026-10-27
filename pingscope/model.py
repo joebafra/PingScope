@@ -58,6 +58,11 @@ def clean_target(data, probes):
     t["mtr"] = bool(data.get("mtr", True))
     t["enabled"] = bool(data.get("enabled", True))
     t["alert_skip"] = bool(data.get("alert_skip", False))
+    ids = [x for x in re.split(r"[\s,;]+", str(data.get("alert_chat_ids") or "").strip()) if x]
+    bad = [x for x in ids if not re.fullmatch(r"-?\d{3,20}|@[A-Za-z]\w{4,31}", x)]
+    if bad:
+        err["alert_chat_ids"] = f"Not a Telegram chat ID: {', '.join(bad[:3])} (use numbers like 123456789 or -100123…)"
+    t["alert_chat_ids"] = ", ".join(dict.fromkeys(ids))[:500]
     for k in ("port", "count"):
         v = data.get(k)
         if v in (None, ""):
