@@ -295,7 +295,7 @@ PingScope can alert you when targets have packet loss or are down, by **Telegram
 
 ### Turn alerts on per group
 
-Admin → Targets → select a group → *Edit group* → *Notifications: On*. Set the packet-loss percentage (for example 10%), whether to alert when a target is down (no replies at all), and whether to send a Telegram message and/or an email. Subgroups set to *Same as the parent group* follow the group above them.
+Admin → Targets → select a group → *Edit group* → *Notifications: On*. Set the packet-loss percentage (for example 10%), whether to alert when a target is down (no replies at all), and whether to send a Telegram message and/or an email. Subgroups set to *Same as the parent group* follow the group above them. *Rounds in a row before alerting* can be set per group (empty = the default in Settings) and overridden per target in its edit dialog, e.g. 1 for a critical link or 5 for a flaky one.
 
 While you edit the group, a **preview** shows how many targets would have alerted with these settings over the last 24 hours, 7 or 14 days, how many alerts and roughly how many messages per day. It lists the targets that would alert, each with a **Skip** button.
 

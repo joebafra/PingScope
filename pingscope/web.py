@@ -370,7 +370,8 @@ def create_group(body: dict = Body(...)):
                                  bool(body.get("hidden")))
         if body.get("alert_mode"):
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
-                             bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)))
+                             bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
+                             body.get("alert_rounds"))
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -386,7 +387,8 @@ def update_group(gid: int, body: dict = Body(...)):
             store.set_hidden(gid, bool(body["hidden"]))
         if "alert_mode" in body:
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
-                             bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)))
+                             bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
+                             body.get("alert_rounds"))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:
@@ -695,7 +697,11 @@ def alert_preview(body: dict = Body(...)):
         raise HTTPException(400, "Packet loss threshold must be a whole number")
     down = bool(body.get("alert_down", True))
     s = store.settings()
-    need = int(body.get("after_rounds") or s["alert_after_rounds"])
+    try:
+        group_rounds = int(body["alert_rounds"]) if str(body.get("alert_rounds") or "").strip() else None
+    except ValueError:
+        raise HTTPException(400, "Rounds in a row must be a whole number")
+    need = group_rounds or s["alert_after_rounds"]
     days = max(1, min(int(body.get("days") or 7), s["raw_retention_days"]))
     # groups that follow this group's setting: itself + subgroups whose path down to it is all "inherit"
     members = set()
@@ -730,7 +736,7 @@ def alert_preview(body: dict = Body(...)):
         if not rounds:
             continue
         t, fam = keys[key]
-        runs = alerts_mod.simulate(rounds, loss, down, need)
+        runs = alerts_mod.simulate(rounds, loss, down, t.get("alert_rounds") or need)
         if not runs:
             continue
         n_alerts += len(runs)
@@ -741,7 +747,7 @@ def alert_preview(body: dict = Body(...)):
         rows.append({"target_id": t["id"], "name": t["name"], "group": path(t["group_id"]), "family": fam,
                      "alerts": len(runs), "down": sum(1 for r in runs if r[2] == "down"),
                      "minutes": sum(((r[1] or int(time.time())) - r[0]) // 60 for r in runs),
-                     "worst": max(r[3] for r in runs), "open": runs[-1][1] is None})
+                     "worst": max(r[3] for r in runs), "open": runs[-1][1] is None, "rounds": t.get("alert_rounds")})
     rows.sort(key=lambda r: (-r["alerts"], -r["minutes"]))
     return {"days": days, "targets": len(active), "skipped": [{"id": t["id"], "name": t["name"]} for t in skipped],
             "targets_alerting": len({r["target_id"] for r in rows}), "alerts": n_alerts, "emails": len(emails),

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS targets(
   dns_query TEXT NOT NULL DEFAULT '', dns_type TEXT NOT NULL DEFAULT 'A',
   port INTEGER, count INTEGER, mtr INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1,
   note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
-  alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '');
+  alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER);
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS telegram_contacts(
 ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
-                 "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids")
+                 "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -110,7 +110,7 @@ def verify_password(pw, stored):
         return False
 
 
-GROUP_COLS = "id, parent_id, name, sort, sort_mode, hidden, alert_mode, alert_loss, alert_down, alert_email, alert_telegram"
+GROUP_COLS = "id, parent_id, name, sort, sort_mode, hidden, alert_mode, alert_loss, alert_down, alert_email, alert_telegram, alert_rounds"
 
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
 ROLES = ("admin", "viewer")
@@ -138,10 +138,12 @@ class Store:
             self.c.execute("ALTER TABLE targets ADD COLUMN alert_skip INTEGER NOT NULL DEFAULT 0")
         if "alert_chat_ids" not in tcols:
             self.c.execute("ALTER TABLE targets ADD COLUMN alert_chat_ids TEXT NOT NULL DEFAULT ''")
+        if "alert_rounds" not in tcols:  # NULL = use the group's setting
+            self.c.execute("ALTER TABLE targets ADD COLUMN alert_rounds INTEGER")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1"),
-                         ("alert_telegram", "INTEGER NOT NULL DEFAULT 1")):
+                         ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_rounds", "INTEGER")):
             if col not in gcols:
                 self.c.execute(f"ALTER TABLE groups ADD COLUMN {col} {ddl}")
         self.lock = threading.RLock()
@@ -203,7 +205,8 @@ class Store:
             on = bool(src and src["alert_mode"] == "on")
             g["alert_effective"] = {"on": on, "from": src["id"] if src else None,
                                     "loss": src["alert_loss"] if on else None, "down": on and src["alert_down"],
-                                    "email": on and src["alert_email"], "telegram": on and src["alert_telegram"]}
+                                    "email": on and src["alert_email"], "telegram": on and src["alert_telegram"],
+                                    "rounds": src["alert_rounds"] if on else None}  # None = the global setting
         for g in out:  # effective visibility: a group is hidden when it or any parent group is hidden
             g["hidden"] = bool(g["hidden"])
             p, hid = g["parent_id"], g["hidden"]
@@ -256,7 +259,8 @@ class Store:
                                  (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode, 1 if hidden else 0))
             return cur.lastrowid
 
-    def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True):
+    def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True, rounds=None):
+        rounds = _rounds(rounds)
         if mode not in ALERT_MODES:
             raise ValueError("Notifications must be inherit, off or on")
         if loss in ("", None):
@@ -271,8 +275,9 @@ class Store:
         if mode == "on" and loss is None and not down:
             raise ValueError("Choose a packet loss threshold, alerts when down, or both")
         with self.lock, self.c:
-            self.c.execute("UPDATE groups SET alert_mode=?, alert_loss=?, alert_down=?, alert_email=?, alert_telegram=? "
-                           "WHERE id=?", (mode, loss, 1 if down else 0, 1 if email else 0, 1 if telegram else 0, gid))
+            self.c.execute("UPDATE groups SET alert_mode=?, alert_loss=?, alert_down=?, alert_email=?, alert_telegram=?, "
+                           "alert_rounds=? WHERE id=?",
+                           (mode, loss, 1 if down else 0, 1 if email else 0, 1 if telegram else 0, rounds, gid))
 
     def set_sort_mode(self, gid, sort_mode, include_subgroups=False):
         ids = [gid, *(self.descendants(gid) if include_subgroups else [])]
@@ -648,6 +653,19 @@ class Store:
         r = self._one("SELECT * FROM mtr WHERE path=? AND ts BETWEEN ? AND ? ORDER BY ABS(ts-?) LIMIT 1",
                       (path, t - window, t + window, t))
         return self._mtr_row(r) if r else None
+
+
+def _rounds(v):
+    """Rounds in a row before alerting: None (use the default) or 1..60."""
+    if v in ("", None):
+        return None
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        raise ValueError("Rounds in a row must be a whole number")
+    if not 1 <= v <= 60:
+        raise ValueError("Rounds in a row must be between 1 and 60")
+    return v
 
 
 def _sort_mode(v):

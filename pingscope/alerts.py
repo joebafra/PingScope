@@ -207,7 +207,6 @@ class Alerter:
         """Update alert state after a round. Returns the events to email: [(event, alert, series)]."""
         self._load()
         groups = {g["id"]: g for g in self.store.groups()}
-        need = s["alert_after_rounds"]
         events = []
         live = set()
         for x in series:
@@ -219,6 +218,8 @@ class Alerter:
             cfg = (groups.get(x.target["group_id"]) or {}).get("alert_effective") or {}
             if x.target.get("alert_skip"):
                 cfg = {}  # this target is excluded from alerts
+            # rounds in a row: the target's own setting, else its group's, else the global default
+            need = x.target.get("alert_rounds") or cfg.get("rounds") or s["alert_after_rounds"]
             a = self.open.get(x.key)
             if not cfg.get("on"):
                 if a:  # notifications were switched off: close quietly

@@ -309,7 +309,7 @@ const tdlg = $('#tdlg'), tform = $('#tform');
 let editing = null;
 function openTarget(t, gid){
   editing = t;
-  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', note: '', group_id: gid};
+  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, note: '', group_id: gid};
   $('#tdlgTitle').textContent = t ? 'Edit target' : 'Add target';
   tform.group_id.innerHTML = groupOptions(p.group_id);
   tform.probe.innerHTML = A.data.probes.map(x => `<option value="${x.name}">${esc(x.label)}</option>`).join('');
@@ -317,7 +317,7 @@ function openTarget(t, gid){
   tform.dns_type.innerHTML = A.data.dns_types.map(x => `<option>${x}</option>`).join('');
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
-  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip;
+  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
   const ids = (p.alert_chat_ids || '').split(/[\s,;]+/).filter(Boolean), cts = A.data.contacts || [];
   const known = new Set(cts.map(c => c.chat_id));
   $('#tgPick').innerHTML = cts.length ? cts.map(c => `<label title="${esc(c.chat_id)}"><input type="checkbox" value="${esc(c.chat_id)}" ${ids.includes(c.chat_id) ? 'checked' : ''}> ${esc(c.label)}${c.is_default ? ' <span class="faint small">(gets all alerts)</span>' : ''}</label>`).join('')
@@ -348,7 +348,7 @@ function probeChanged(){
 tform.probe.onchange = probeChanged;
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
-  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = targetChats();
+  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = targetChats(); fd.alert_rounds = tform.alert_rounds.value;
   fd.group_id = +fd.group_id;
   return fd;
 }
@@ -419,6 +419,7 @@ function openGroup(g, parentId){
   gform.alert_down.checked = g ? g.alert_down : true;
   gform.alert_email.checked = g ? g.alert_email : true;
   gform.alert_telegram.checked = g ? g.alert_telegram : true;
+  gform.alert_rounds.value = g?.alert_rounds ?? ''; gform.alert_rounds.placeholder = `default: ${A.data.settings.alert_after_rounds}`;
   const parent = () => A.groupMap.get(gform.parent_id.value ? +gform.parent_id.value : null);
   const syncAlert = () => {
     const m = gform.alert_mode.value;
@@ -428,7 +429,7 @@ function openGroup(g, parentId){
   };
   const preview = () => { clearTimeout(gPrevTimer); gPrevTimer = setTimeout(() => loadPreview(g), 350); };
   gform.alert_mode.onchange = () => { syncAlert(); preview(); }; gform.parent_id.onchange = syncAlert; syncAlert();
-  gform.alert_loss.oninput = preview; gform.alert_down.onchange = preview;
+  gform.alert_loss.oninput = preview; gform.alert_down.onchange = preview; gform.alert_rounds.oninput = preview;
   $('#alertPreview').innerHTML = ''; preview();
   $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
   let del = $('#gDel');
@@ -449,7 +450,7 @@ gform.addEventListener('submit', async e => {
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
-                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked};
+                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_rounds: gform.alert_rounds.value};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
     else { const r = await api('api/admin/groups', {method: 'POST', body}); A.gid = r.id; store.set('psa_gid', r.id); }
@@ -464,7 +465,7 @@ async function loadPreview(g){
   const seq = ++gPrevSeq;
   box.innerHTML = '<span class="muted">Calculating…</span>';
   let r;
-  try { r = await api('api/admin/alerts/preview', {method: 'POST', body: {group_id: g.id, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked, days: gPrevDays}}); }
+  try { r = await api('api/admin/alerts/preview', {method: 'POST', body: {group_id: g.id, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked, alert_rounds: gform.alert_rounds.value, days: gPrevDays}}); }
   catch(err){ if (seq === gPrevSeq) box.innerHTML = `<span style="color:var(--bad)">${esc(err.message)}</span>`; return; }
   if (seq !== gPrevSeq) return;
   const days = `<select id="pvDays" style="width:auto;padding:2px 6px;font-size:13px">${[[1, 'last 24 hours'], [7, 'last 7 days'], [14, 'last 14 days']].map(([v, l]) => `<option value="${v}" ${v === gPrevDays ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
@@ -472,10 +473,10 @@ async function loadPreview(g){
   let html = `<div class="muted small">Preview with these settings · ${days}</div>`;
   if (!r.has_data) html += `<div class="big">No measurement data for this period yet.</div>`;
   else html += `<div class="big"><b>${r.targets_alerting}</b> of ${r.targets} targets would have alerted · <b>${r.alerts}</b> alert${r.alerts === 1 ? '' : 's'}</div>` +
-    `<div class="muted small">≈ ${r.emails} message${r.emails === 1 ? '' : 's'} (${perDay < 1 ? perDay.toFixed(1) : Math.round(perDay)} per day), counting ${r.need} rounds in a row before an alert${r.skipped.length ? ` · ${r.skipped.length} target(s) skipped` : ''}</div>`;
+    `<div class="muted small">≈ ${r.emails} message${r.emails === 1 ? '' : 's'} (${perDay < 1 ? perDay.toFixed(1) : Math.round(perDay)} per day), counting ${r.need} rounds in a row before an alert${r.rows.some(x => x.rounds) ? ' (or the target\'s own setting)' : ''}${r.skipped.length ? ` · ${r.skipped.length} target(s) skipped` : ''}</div>`;
   if (r.rows.length) html += `<details ${r.rows.length <= 8 ? 'open' : ''}><summary>Show targets</summary><div class="plist"><table>${r.rows.map(x => `<tr>
       <td><b>${esc(x.name)}</b> <span class="badge">IPv${x.family}</span>${x.open ? ' <span class="akind loss" style="font-size:11px">now</span>' : ''}<div class="muted small">${esc(x.group)}</div></td>
-      <td class="small" style="white-space:nowrap">${x.alerts}× · ${fmtDur(x.minutes * 60)}<div class="muted">worst ${x.worst.toFixed(0)}%${x.down ? ` · ${x.down}× down` : ''}</div></td>
+      <td class="small" style="white-space:nowrap">${x.alerts}× · ${fmtDur(x.minutes * 60)}<div class="muted">worst ${x.worst.toFixed(0)}%${x.down ? ` · ${x.down}× down` : ''}${x.rounds ? ` · own: ${x.rounds} rounds` : ''}</div></td>
       <td style="text-align:right"><button type="button" class="btn sm" data-skip="${x.target_id}">🔕 Skip</button></td></tr>`).join('')}</table></div></details>`;
   if (r.skipped.length) html += `<details><summary>Skipped targets (${r.skipped.length})</summary><div class="plist"><table>${r.skipped.map(x => `<tr><td>🔕 ${esc(x.name)}</td>
       <td style="text-align:right"><button type="button" class="btn sm" data-unskip="${x.id}">Include again</button></td></tr>`).join('')}</table></div></details>`;
@@ -669,7 +670,7 @@ function alertSummary(g, plain){
   if (e.loss) parts.push(`loss ≥ ${e.loss}%`);
   if (e.down) parts.push('down');
   const ch = [e.telegram && 'Telegram', e.email && 'email'].filter(Boolean);
-  return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')}, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
+  return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')} after ${e.rounds || A.data.settings.alert_after_rounds} rounds, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
 }
 const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
 async function viewAlerts(){

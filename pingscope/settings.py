@@ -55,9 +55,10 @@ SCHEMA = {
                           "Where alerts go by default: one or more chat IDs, separated by commas. Send /start to your bot "
                           "and use Admin → Alerts → Find chat IDs. Per target you can add extra chat IDs, e.g. for the "
                           "customer of that connection.", None, None),
-    "alert_after_rounds": (3, int, "Notifications", "Rounds in a row before alerting",
+    "alert_after_rounds": (3, int, "Notifications", "Rounds in a row before alerting (default)",
                            "A problem must last this many measurement rounds before an alert starts, and the same "
-                           "number of good rounds before it counts as resolved. Prevents alerts for a single blip.",
+                           "number of good rounds before it counts as resolved. Prevents alerts for a single blip. "
+                           "Groups and single targets can override it.",
                            1, 60),
     "alert_recovery": (True, bool, "Notifications", "Notify when resolved",
                        "Also send a message (Telegram and/or email) when a target is fine again.", None, None),

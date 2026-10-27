@@ -63,6 +63,13 @@ def clean_target(data, probes):
     if bad:
         err["alert_chat_ids"] = f"Not a Telegram chat ID: {', '.join(bad[:3])} (use numbers like 123456789 or -100123…)"
     t["alert_chat_ids"] = ", ".join(dict.fromkeys(ids))[:500]
+    ar = str(data.get("alert_rounds") if data.get("alert_rounds") is not None else "").strip()
+    t["alert_rounds"] = None
+    if ar:
+        if not ar.isdigit() or not 1 <= int(ar) <= 60:
+            err["alert_rounds"] = "must be a whole number from 1 to 60, or empty"
+        else:
+            t["alert_rounds"] = int(ar)
     for k in ("port", "count"):
         v = data.get(k)
         if v in (None, ""):
