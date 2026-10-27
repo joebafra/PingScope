@@ -59,8 +59,8 @@ SCHEMA = {
                            "A problem must last this many measurement rounds before an alert starts, and the same "
                            "number of good rounds before it counts as resolved. Prevents alerts for a single blip.",
                            1, 60),
-    "alert_recovery": (True, bool, "Notifications", "Email when resolved",
-                       "Also send an email when a target is fine again.", None, None),
+    "alert_recovery": (True, bool, "Notifications", "Notify when resolved",
+                       "Also send a message (Telegram and/or email) when a target is fine again.", None, None),
     "alert_reminder_hours": (0, int, "Notifications", "Reminder while still down (hours)",
                              "Send the alert again every this many hours while it lasts. 0 = never.", 0, 168),
 }
