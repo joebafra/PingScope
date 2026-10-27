@@ -27,6 +27,12 @@ def chat_list(v):
     return [x for x in re.split(r"[\s,;]+", str(v or "").strip()) if x]
 
 
+def with_contacts(s, store):
+    """Settings where telegram_chat_ids also includes the saved contacts marked "gets all alerts"."""
+    ids = chat_list(s.get("telegram_chat_ids")) + [c["chat_id"] for c in store.contacts() if c["is_default"]]
+    return dict(s, telegram_chat_ids=", ".join(dict.fromkeys(ids)))
+
+
 def tg_token(s):
     return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or s.get("telegram_bot_token", "")
 
@@ -281,6 +287,7 @@ class Alerter:
     async def notify(self, ts, events, s):
         if not events:
             return
+        s = with_contacts(s, self.store)
         errors, sent_any = [], False
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
         mail_used = bool(token(s) or s.get("alert_email_from") or recipients(s))
@@ -336,6 +343,39 @@ class Alerter:
             for _, a, _, _ in events:
                 self.store.update_alert(a["id"], emailed=1, last_email=ts)
                 a["last_email"] = ts
+
+    async def test_alert(self, s, x, chats=None):
+        """Send a sample alert for series x, marked as a test. chats=None: the admin channels (Telegram defaults
+        and email); otherwise only those Telegram chats, formatted like a customer's message.
+        Returns {"sent": [...], "errors": [...]}."""
+        s = with_contacts(s, self.store)
+        ts = int(time.time())
+        a = {"kind": "loss", "last_loss": 25.0, "peak_loss": 25.0, "started": ts - 3 * s["interval"]}
+        ev = [("start", a, x, {"loss": 10})]
+        sent, errors = [], []
+        if chats is None:
+            chats = chat_list(s["telegram_chat_ids"]) if tg_token(s) else []
+            external = False
+            if email_ready(s) is None:
+                subject, text, body = self.compose(ts, ev, s)
+                try:
+                    await asyncio.to_thread(send_email, s, "[TEST] " + subject, "TEST — this is not a real alert.\n\n" + text,
+                                            '<p style="font-family:sans-serif;color:#d97706"><b>TEST</b> — this is not a real alert.</p>' + body)
+                    sent.append("email to " + ", ".join(recipients(s)))
+                except RuntimeError as e:
+                    errors.append(str(e))
+        else:
+            external = True
+        msg = "🧪 <b>TEST</b> — this is not a real alert.\n\n" + self.compose_telegram(ts, ev, s, external=external)
+        for chat in chats:
+            try:
+                await asyncio.to_thread(send_telegram, s, chat, msg)
+                sent.append(f"Telegram {chat}")
+            except RuntimeError as e:
+                errors.append(str(e))
+        if not sent and not errors:
+            errors.append("Nothing to send to: set up Telegram (bot token + chat ID) or email in Settings → Notifications")
+        return {"sent": sent, "errors": errors}
 
     def _rows(self, ts, events):
         groups = {g["id"]: g for g in self.store.groups()}

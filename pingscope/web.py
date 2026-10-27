@@ -19,7 +19,7 @@ from .collector import Collector, measure
 from .db import Store
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
 from .probes import PROBES
-from .resolver import Resolver, lookup
+from .resolver import Resolver, Series, lookup
 
 log = logging.getLogger("pingscope")
 
@@ -350,7 +350,7 @@ def _public_settings(s):
 def admin_data():
     s = store.settings()
     return {
-        "groups": store.groups(), "targets": store.targets(),
+        "groups": store.groups(), "targets": store.targets(), "contacts": store.contacts(),
         "series": {tid: [_series_json(x) for x in xs] for tid, xs in collector.series.items()},
         "probes": [p.info() for p in PROBES.values()],
         "families": FAMILY_MODES, "dns_types": DNS_TYPES,
@@ -677,7 +677,7 @@ def alert_list():
             rows.append({**a, "name": t["name"], "group": path(t["group_id"])})
     s = store.settings()
     return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
-            "telegram_problem": alerts_mod.telegram_ready(s),
+            "telegram_problem": alerts_mod.telegram_ready(alerts_mod.with_contacts(s, store)),
             "target_chats": sum(1 for t in targets.values() if t.get("alert_chat_ids")),
             "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,
             "groups_on": sum(1 for g in groups.values() if g["alert_mode"] == "on")}
@@ -756,10 +756,59 @@ async def telegram_chats():
         raise HTTPException(400, str(e))
 
 
+@admin.get("/contacts")
+def contacts():
+    return {"contacts": store.contacts()}
+
+
+@admin.post("/contacts")
+def add_contact(body: dict = Body(...)):
+    try:
+        return {"id": store.save_contact(None, body.get("chat_id"), body.get("label"), body.get("is_default"))}
+    except ValueError as e:
+        raise _bad(e)
+
+
+@admin.put("/contacts/{cid}")
+def update_contact(cid: int, body: dict = Body(...)):
+    try:
+        store.save_contact(cid, body.get("chat_id"), body.get("label"), body.get("is_default"))
+    except KeyError:
+        raise HTTPException(404, "Contact not found")
+    except ValueError as e:
+        raise _bad(e)
+    collector.poke()
+    return {"ok": True}
+
+
+@admin.delete("/contacts/{cid}")
+def delete_contact(cid: int):
+    return {"removed_from_targets": store.delete_contact(cid)}
+
+
+@admin.post("/alerts/test-alert")
+async def alert_test_alert(body: dict = Body(default={})):
+    """A sample alert like the real ones. Without chat_ids: to the admin channels; with: to those chats only."""
+    targets = store.targets(enabled_only=True)
+    tid = body.get("target_id")
+    t = next((x for x in targets if x["id"] == tid), None) if tid else (targets[0] if targets else None)
+    if not t:
+        raise HTTPException(400, "Add a target first")
+    xs = collector.series.get(t["id"]) or []
+    x = xs[0] if xs else Series(f"{t['id']}-4", t, 4, t["host"] or None)
+    chats = alerts_mod.chat_list(body.get("chat_ids")) if "chat_ids" in body else None
+    if chats is not None and not chats:
+        raise HTTPException(400, "Select or enter a chat ID first")
+    r = await collector.alerter.test_alert(store.settings(), x, chats)
+    if r["errors"] and not r["sent"]:
+        raise HTTPException(400, "; ".join(r["errors"]))
+    return r
+
+
 @admin.post("/alerts/test-telegram")
 async def alert_test_telegram(body: dict = Body(default={})):
     s = store.settings()
-    chats = alerts_mod.chat_list(body.get("chat_id")) or alerts_mod.chat_list(s["telegram_chat_ids"])
+    chats = alerts_mod.chat_list(body.get("chat_id")) or alerts_mod.chat_list(alerts_mod.with_contacts(s, store)["telegram_chat_ids"])
     if not chats:
         raise HTTPException(400, "No Telegram chat ID set. Add one in Settings → Notifications.")
     site = html.escape(s.get("site_title") or "PingScope")

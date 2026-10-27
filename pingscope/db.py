@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -47,6 +48,8 @@ CREATE TABLE IF NOT EXISTS alerts(
   emailed INTEGER NOT NULL DEFAULT 0, last_email INTEGER);
 CREATE INDEX IF NOT EXISTS alerts_open ON alerts(ended);
 CREATE INDEX IF NOT EXISTS alerts_started ON alerts(started);
+CREATE TABLE IF NOT EXISTS telegram_contacts(
+  id INTEGER PRIMARY KEY, chat_id TEXT NOT NULL UNIQUE, label TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0);
 """
 
 # Notifications per group. mode: inherit (same as the parent group; top level = off), off or on.
@@ -456,6 +459,53 @@ class Store:
             self.c.execute("DELETE FROM sessions WHERE token=?", (self._tok(token),))
 
     # ---- alerts ---------------------------------------------------------------------
+
+    # ---- Telegram contacts (saved, labelled chat IDs) -----------------------------
+
+    def contacts(self):
+        out = [dict(r) for r in self._q("SELECT id, chat_id, label, is_default FROM telegram_contacts ORDER BY label COLLATE NOCASE")]
+        for c in out:
+            c["is_default"] = bool(c["is_default"])
+        return out
+
+    def save_contact(self, cid, chat_id, label, is_default):
+        chat_id, label = str(chat_id or "").strip(), str(label or "").strip()[:100]
+        if not re.fullmatch(r"-?\d{3,20}|@[A-Za-z]\w{4,31}", chat_id):
+            raise ValueError("Not a Telegram chat ID (use numbers like 123456789 or -100123…)")
+        if not label:
+            raise ValueError("Give the contact a name")
+        try:
+            with self.lock, self.c:
+                if cid:
+                    old = self._one("SELECT chat_id FROM telegram_contacts WHERE id=?", (cid,))
+                    if not old:
+                        raise KeyError("Contact not found")
+                    self.c.execute("UPDATE telegram_contacts SET chat_id=?, label=?, is_default=? WHERE id=?",
+                                   (chat_id, label, 1 if is_default else 0, cid))
+                    if old[0] != chat_id:  # keep targets pointing at this contact
+                        for t in self._q("SELECT id, alert_chat_ids FROM targets WHERE alert_chat_ids != ''"):
+                            ids = [chat_id if x == old[0] else x for x in re.split(r"[\s,;]+", t[1]) if x]
+                            self.c.execute("UPDATE targets SET alert_chat_ids=? WHERE id=?", (", ".join(dict.fromkeys(ids)), t[0]))
+                    return cid
+                return self.c.execute("INSERT INTO telegram_contacts(chat_id, label, is_default) VALUES (?,?,?)",
+                                      (chat_id, label, 1 if is_default else 0)).lastrowid
+        except sqlite3.IntegrityError:
+            raise ValueError("That chat ID is already saved")
+
+    def delete_contact(self, cid):
+        r = self._one("SELECT chat_id FROM telegram_contacts WHERE id=?", (cid,))
+        if not r:
+            return 0
+        n = 0
+        with self.lock, self.c:
+            self.c.execute("DELETE FROM telegram_contacts WHERE id=?", (cid,))
+            for t in self._q("SELECT id, alert_chat_ids FROM targets WHERE alert_chat_ids != ''"):
+                ids = [x for x in re.split(r"[\s,;]+", t[1]) if x]
+                if r[0] in ids:
+                    n += 1
+                    self.c.execute("UPDATE targets SET alert_chat_ids=? WHERE id=?",
+                                   (", ".join(x for x in ids if x != r[0]), t[0]))
+        return n
 
     def open_alerts(self):
         return [dict(r) for r in self._q("SELECT * FROM alerts WHERE ended IS NULL")]

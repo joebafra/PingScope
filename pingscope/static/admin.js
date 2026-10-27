@@ -317,10 +317,16 @@ function openTarget(t, gid){
   tform.dns_type.innerHTML = A.data.dns_types.map(x => `<option>${x}</option>`).join('');
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
-  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_chat_ids.value = p.alert_chat_ids || '';
+  tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip;
+  const ids = (p.alert_chat_ids || '').split(/[\s,;]+/).filter(Boolean), cts = A.data.contacts || [];
+  const known = new Set(cts.map(c => c.chat_id));
+  $('#tgPick').innerHTML = cts.length ? cts.map(c => `<label title="${esc(c.chat_id)}"><input type="checkbox" value="${esc(c.chat_id)}" ${ids.includes(c.chat_id) ? 'checked' : ''}> ${esc(c.label)}${c.is_default ? ' <span class="faint small">(gets all alerts)</span>' : ''}</label>`).join('')
+    : '<span class="muted small">No saved Telegram contacts yet — add them under Admin → Alerts, or enter chat IDs below.</span>';
+  tform.alert_chat_ids.value = ids.filter(i => !known.has(i)).join(', ');
   $('#tgTest').onclick = async () => {
-    if (!tform.alert_chat_ids.value.trim()) return toast('Enter a chat ID first', true);
-    try { const x = await api('api/admin/alerts/test-telegram', {method: 'POST', body: {chat_id: tform.alert_chat_ids.value}}); toast(`Test message sent to ${x.to.join(', ')}`); }
+    const chats = targetChats();
+    if (!chats) return toast('Select a contact or enter a chat ID first', true);
+    try { const x = await api('api/admin/alerts/test-alert', {method: 'POST', body: {target_id: editing?.id, chat_ids: chats}}); toast(`Test alert sent: ${x.sent.join(', ')}` + (x.errors.length ? ` — failed: ${x.errors.join('; ')}` : ''), !!x.errors.length); }
     catch(err){ toast(err.message, true); }
   };
   $('#tDelete').classList.toggle('hidden', !t);
@@ -342,7 +348,7 @@ function probeChanged(){
 tform.probe.onchange = probeChanged;
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
-  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = tform.alert_chat_ids.value;
+  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = targetChats();
   fd.group_id = +fd.group_id;
   return fd;
 }
@@ -390,6 +396,11 @@ $('#lookupBtn').onclick = async () => {
     : `<span class="muted small">No AAAA record found for ${esc(cands.join(', '))}.</span>`;
   box.onclick = e => { const b = e.target.closest('button[data-a]'); if (b){ tform.host_v6.value = b.dataset.a; } };
 };
+
+function targetChats(){
+  const picked = $$('#tgPick input:checked').map(i => i.value);
+  return [...new Set([...picked, ...tform.alert_chat_ids.value.split(/[\s,;]+/).filter(Boolean)])].join(', ');
+}
 
 // ---------- group dialog ----------
 const gdlg = $('#gdlg'), gform = $('#gform');
@@ -677,26 +688,70 @@ async function viewAlerts(){
         Email: ${r.email_problem ? `<span class="muted">not set up (${esc(r.email_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'}
         ${r.target_chats ? ` · ${r.target_chats} target(s) with their own chat IDs` : ''}</div>
       ${r.last_error ? `<div class="warnbox">${esc(r.last_error)}</div>` : ''}
-      <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><button class="btn" id="testTg">Send test Telegram message</button><button class="btn" id="findChats">Find chat IDs</button><button class="btn" id="testMail">Send test email</button>
+      <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><button class="btn primary" id="testAlert">Send test alert</button><button class="btn" id="findChats">Find chat IDs</button>
       <span class="muted small">${r.last_sent ? `Last alert sent: ${fmtShort(r.last_sent)}` : ''}</span></div>
+      <div class="muted small" style="margin-top:6px">The test alert looks exactly like a real one (marked TEST) and goes to every admin channel: Telegram contacts that get all alerts, the chat IDs in Settings, and email if set up.</div>
       <div id="chatList"></div></div>
+    <div class="card pad" style="margin-bottom:16px"><h2>Telegram contacts</h2>
+      <p class="muted small" style="margin:4px 0 10px">Save chat IDs once with a name, then tick them on a target (Edit target → "Also send alerts for this target to"). <b>Gets all alerts</b> = receives every alert, like the chat IDs in Settings.</p>
+      <div id="contacts"></div></div>
     <div class="card pad" style="margin-bottom:16px"><h2>Active alerts (${open.length})</h2><div style="margin-top:10px">${table(open, 'Everything is fine.')}</div></div>
     <div class="card pad"><h2>History</h2><p class="muted small" style="margin:4px 0 10px">Resolved alerts of the last 90 days.</p>${table(done, 'No resolved alerts yet.')}</div></div>`;
-  $('#testTg').onclick = async () => {
-    try { const x = await api('api/admin/alerts/test-telegram', {method: 'POST', body: {}}); toast(`Test message sent to ${x.to.join(', ')}`); }
+  $('#testAlert').onclick = async () => {
+    try { const x = await api('api/admin/alerts/test-alert', {method: 'POST', body: {}}); toast(`Test alert sent: ${x.sent.join(', ')}` + (x.errors.length ? ` — failed: ${x.errors.join('; ')}` : ''), !!x.errors.length); }
     catch(err){ toast(err.message, true); }
   };
+  renderContacts();
   $('#findChats').onclick = async () => {
     const box = $('#chatList'); box.innerHTML = '<p class="muted small">Asking Telegram…</p>';
     try {
       const {chats} = await api('api/admin/telegram/chats');
-      box.innerHTML = chats.length ? `<p class="small" style="margin:12px 0 6px">Chats that recently wrote to your bot:</p><div class="tblwrap"><table class="tbl"><tbody>${chats.map(c => `<tr><td><b>${esc(c.name || '(no name)')}</b> <span class="muted small">${esc(c.type || '')}</span></td><td class="mono">${c.id}</td><td class="acts"><button class="btn sm" data-copy="${c.id}">Copy</button></td></tr>`).join('')}</tbody></table></div><p class="muted small">Put your own ID in Settings → Notifications → Telegram chat IDs. A customer's ID goes in that target's "Extra Telegram chat IDs".</p>`
+      box.innerHTML = chats.length ? `<p class="small" style="margin:12px 0 6px">Chats that recently wrote to your bot:</p><div class="tblwrap"><table class="tbl"><tbody>${chats.map(c => `<tr><td><b>${esc(c.name || '(no name)')}</b> <span class="muted small">${esc(c.type || '')}</span></td><td class="mono">${c.id}</td><td class="acts">${(A.data.contacts || []).some(x => x.chat_id === String(c.id)) ? '<span class="muted small">saved</span>' : `<button class="btn sm" data-save="${c.id}" data-name="${esc(c.name || '')}">Save as contact</button>`} <button class="btn sm ghost" data-copy="${c.id}">Copy</button></td></tr>`).join('')}</tbody></table></div><p class="muted small">Save yourself as a contact with "Gets all alerts" on; save a customer and tick them on their target.</p>`
         : '<p class="small" style="margin:12px 0 0">No chats found. Open your bot in Telegram, send <b>/start</b> (or add the bot to a group and send a message there), then click Find chat IDs again. Telegram only remembers messages of the last 24 hours.</p>';
-      box.onclick = e => { const b = e.target.closest('[data-copy]'); if (b){ navigator.clipboard?.writeText(b.dataset.copy); toast('Copied ' + b.dataset.copy); } };
+      box.onclick = async e => {
+        const b = e.target.closest('[data-copy]'); if (b){ navigator.clipboard?.writeText(b.dataset.copy); toast('Copied ' + b.dataset.copy); }
+        const sv = e.target.closest('[data-save]');
+        if (sv){
+          try { await api('api/admin/contacts', {method: 'POST', body: {chat_id: sv.dataset.save, label: sv.dataset.name || sv.dataset.save, is_default: !(A.data.contacts || []).length}}); toast('Contact saved — rename it below if you like'); sv.outerHTML = '<span class="muted small">saved</span>'; await renderContacts(); }
+          catch(err){ toast(err.message, true); }
+        }
+      };
     } catch(err){ box.innerHTML = `<p class="small" style="color:var(--bad)">${esc(err.message)}</p>`; }
   };
-  $('#testMail').onclick = async () => {
-    try { const x = await api('api/admin/alerts/test', {method: 'POST'}); toast(`Test email sent to ${x.to.join(', ')}`); }
+}
+
+async function renderContacts(){
+  const box = $('#contacts'); if (!box) return;
+  const {contacts} = await api('api/admin/contacts');
+  A.data.contacts = contacts;
+  box.innerHTML = (contacts.length ? `<div class="tblwrap"><table class="tbl ctbl"><thead><tr><th>Name</th><th>Chat ID</th><th>Gets all alerts</th><th></th></tr></thead><tbody>${contacts.map(c => `<tr data-c="${c.id}">
+      <td><input type="text" class="cl" value="${esc(c.label)}" style="min-width:140px"></td>
+      <td class="mono small">${esc(c.chat_id)}</td>
+      <td><input type="checkbox" class="cd" ${c.is_default ? 'checked' : ''} style="width:auto"></td>
+      <td class="acts"><button class="btn sm" data-ct="test">Test</button> <button class="btn sm danger" data-ct="del">Delete</button></td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="muted small" style="margin:0 0 8px">No contacts yet. Use <b>Find chat IDs</b> above and click <b>Save as contact</b>, or add one here.</p>') +
+    `<form id="cform" class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px"><input name="label" placeholder="Name, e.g. Joeri or Klant Groningen" required style="flex:2;min-width:160px">
+      <input name="chat_id" placeholder="Chat ID" required style="flex:1;min-width:120px" spellcheck="false">
+      <label class="check" style="margin:0"><input type="checkbox" name="is_default"> <span>Gets all alerts</span></label><button class="btn">Add contact</button></form>`;
+  const save = async tr => {
+    const c = contacts.find(x => x.id === +tr.dataset.c);
+    try { await api(`api/admin/contacts/${c.id}`, {method: 'PUT', body: {chat_id: c.chat_id, label: tr.querySelector('.cl').value, is_default: tr.querySelector('.cd').checked}}); toast('Contact saved'); await renderContacts(); }
+    catch(err){ toast(err.message, true); }
+  };
+  box.onchange = e => { const tr = e.target.closest('tr[data-c]'); if (tr) save(tr); };
+  box.onclick = async e => {
+    const b = e.target.closest('[data-ct]'); if (!b) return;
+    const c = contacts.find(x => x.id === +b.closest('tr').dataset.c);
+    if (b.dataset.ct === 'test'){
+      try { await api('api/admin/alerts/test-alert', {method: 'POST', body: {chat_ids: c.chat_id}}); toast(`Test alert sent to ${c.label}`); } catch(err){ toast(err.message, true); }
+    } else if (confirm(`Delete contact "${c.label}"? It is also removed from the targets it is ticked on.`)){
+      try { const r = await api(`api/admin/contacts/${c.id}`, {method: 'DELETE'}); toast(`Deleted${r.removed_from_targets ? `, removed from ${r.removed_from_targets} target(s)` : ''}`); await load(); await renderContacts(); } catch(err){ toast(err.message, true); }
+    }
+  };
+  $('#cform').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target;
+    try { await api('api/admin/contacts', {method: 'POST', body: {label: f.label.value, chat_id: f.chat_id.value, is_default: f.is_default.checked}}); toast('Contact added'); await renderContacts(); }
     catch(err){ toast(err.message, true); }
   };
 }
