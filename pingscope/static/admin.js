@@ -679,7 +679,7 @@ async function viewAlerts(){
     <td><a href="./#/t/${a.target_id}"><b>${esc(a.name)}</b></a> <span class="badge">IPv${a.family}</span><div class="muted small">${esc(a.group)}</div></td>
     <td class="muted small">${fmtShort(a.started)}${a.ended ? ` → ${fmtShort(a.ended)}` : ''}<br>${fmtDur((a.ended || r.now) - a.started)}</td>
     <td class="small">${a.kind === 'down' && !a.ended ? '100% loss' : `now ${a.last_loss == null ? '–' : a.last_loss.toFixed(0) + '%'} · worst ${a.peak_loss == null ? '–' : a.peak_loss.toFixed(0) + '%'}`}</td>
-    <td class="small muted">${a.emailed ? '✉️ emailed' : ''}</td></tr>`;
+    <td class="small muted">${a.emailed ? '✓ sent' : '<span title="No message was sent for this alert (no channel set up, or sending failed)">not sent</span>'}</td></tr>`;
   const table = (rows, empty) => rows.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Status</th><th>Target</th><th>When</th><th>Loss</th><th></th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>` : `<p class="muted">${empty}</p>`;
   main.innerHTML = `<div style="max-width:1000px">
     <div class="card pad" style="margin-bottom:16px"><h2>Notifications</h2>
