@@ -82,7 +82,63 @@ const PS = (() => {
     return {ymin: 0, ymax: 4 * step};
   }
 
+  // draw = graph (kept as a bitmap in cv._base) + overlay (crosshair, zoom selection) on top
   function draw(cv, d){
+    drawBase(cv, d);
+    if (!cv.width) return;
+    const b = cv._base || (cv._base = document.createElement('canvas'));
+    b.width = cv.width; b.height = cv.height;
+    b.getContext('2d').drawImage(cv, 0, 0);
+    if (cv._hx != null || cv._sel) overlay(cv);
+  }
+
+  function overlay(cv){
+    const b = cv._base, g = cv._g; if (!b || !g) return;
+    const dpr = window.devicePixelRatio || 1, c = cv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height); c.drawImage(b, 0, 0);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const st = getComputedStyle(document.documentElement), fg = st.getPropertyValue('--fg').trim() || '#000';
+    if (cv._sel){
+      const x0 = Math.max(g.L, Math.min(cv._sel[0], cv._sel[1])), x1 = Math.min(g.L + g.pw, Math.max(cv._sel[0], cv._sel[1]));
+      c.fillStyle = st.getPropertyValue('--accent').trim() || '#2563eb';
+      c.globalAlpha = .16; c.fillRect(x0, g.T, x1 - x0, g.ph);
+      c.globalAlpha = .8; c.fillRect(x0, g.T, 1, g.ph); c.fillRect(x1 - 1, g.T, 1, g.ph);
+      c.globalAlpha = 1;
+    }
+    if (cv._hx != null){
+      const x = Math.round(cv._hx) + .5;
+      c.strokeStyle = fg; c.globalAlpha = .55; c.lineWidth = 1; c.setLineDash([3, 3]);
+      c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, g.T + g.ph); c.stroke();
+      c.setLineDash([]); c.globalAlpha = 1;
+      if (cv._hy != null){
+        c.beginPath(); c.arc(x, cv._hy, 4, 0, 2 * Math.PI);
+        c.fillStyle = cv._hc || fg; c.fill(); c.lineWidth = 1.5; c.strokeStyle = st.getPropertyValue('--panel').trim() || '#fff'; c.stroke();
+      }
+    }
+  }
+
+  // crosshair: shown at the same moment on every visible graph that covers it
+  let hoverRaf = 0, hoverT = null;
+  function setHover(t){
+    hoverT = t;
+    if (hoverRaf) return;
+    hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0;
+      for (const cv of $$('canvas.chart')){
+        const d = cv._d, g = cv._g;
+        const had = cv._hx != null;
+        cv._hx = cv._hy = null;
+        if (hoverT != null && d && g && cv._vis !== false && hoverT >= d.start && hoverT <= d.end){
+          const p = d.points.find(q => hoverT >= q.t && hoverT < q.t + d.step);
+          cv._hx = g.L + ((p ? p.t + d.step / 2 : hoverT) - d.start) / g.span * g.pw;
+          if (p && p.q.length){ cv._hy = g.Y(med(p.q)); cv._hc = lossColor(p.sent ? p.lost / p.sent * 100 : 0); }
+        }
+        if (had || cv._hx != null) overlay(cv);
+      }
+    });
+  }
+
+  function drawBase(cv, d){
     if (d) cv._d = d; d = cv._d;
     const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
     if (!W || !H) return;
@@ -94,7 +150,7 @@ const PS = (() => {
     const L = 50, R = 8, T = 8, B = 18, pw = W - L - R, ph = H - T - B, span = d.end - d.start;
     const {ymin, ymax} = yRange(d);
     const X = t => L + (t - d.start) / span * pw, Y = ms => T + ph - (Math.min(Math.max(ms, ymin), ymax) - ymin) / (ymax - ymin) * ph;
-    cv._g = {L, pw, span};
+    cv._g = {L, pw, span, T, ph, Y};
     const plotBg = v('--plot-bg'), axis = v('--axis'), dash = v('--grid-dash');
     if (plotBg){ c.fillStyle = plotBg; c.fillRect(L, T, pw, ph); }
     c.lineWidth = 1; c.strokeStyle = v('--chart-grid') || v('--grid'); c.fillStyle = v('--muted');
@@ -151,17 +207,43 @@ const PS = (() => {
       tip.innerHTML = `<b>${new Date(p.t * 1000).toLocaleString(LOCALE, {dateStyle: 'medium', timeStyle: 'short'})}</b><br>` +
         (p.q.length ? `median ${fmtMs(med(p.q))}<br>min ${fmtMs(p.q[0])} · max ${fmtMs(p.q[p.q.length - 1])}<br>` : 'no replies<br>') +
         `<span class="dot" style="background:${lossColor(loss)};margin-right:5px"></span>loss ${loss.toFixed(1)}% (${p.lost}/${p.sent})` +
-        (onPick ? `<br><span style="color:var(--accent)">${e.pointerType === 'touch' ? 'Tap again' : 'Click'} for traceroute</span>` : '');
+        (onPick ? `<br><span style="color:var(--accent)">${e.pointerType === 'touch' ? 'Tap again' : 'Click'} for traceroute</span>` : '') +
+        (e.pointerType !== 'touch' && PS.onZoom ? `<br><span class="faint">Drag to zoom${cv._d?.custom ? ' · double-click to reset' : ''}</span>` : '');
       tip.style.display = 'block';
       const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.max(8, e.clientY - tip.offsetHeight - 14);
       tip.style.left = x + 'px'; tip.style.top = y + 'px';
     };
-    cv.addEventListener('pointermove', show);
-    cv.addEventListener('pointerdown', show);
-    cv.addEventListener('pointerleave', () => tip.style.display = 'none');
+    const timeAt = x => { const d = cv._d, g = cv._g; return d.start + Math.max(0, Math.min(g.pw, x - g.L)) / g.pw * g.span; };
+    const localX = e => e.clientX - cv.getBoundingClientRect().left;
+    let drag = null, suppress = false;
+    cv.style.cursor = 'crosshair';
+    cv.style.touchAction = 'pan-y';
+    cv.addEventListener('pointermove', e => {
+      if (drag){
+        const x = localX(e);
+        if (Math.abs(x - drag) > 4){ cv._sel = [drag, x]; tip.style.display = 'none'; overlay(cv); return; }
+      }
+      show(e);
+      const p = bucketAt(e); setHover(p ? p.t + (cv._d.step >> 1) : null);
+    });
+    cv.addEventListener('pointerdown', e => {
+      show(e);
+      if (e.pointerType !== 'touch' && e.button === 0 && cv._d && PS.onZoom){ drag = localX(e); cv.setPointerCapture?.(e.pointerId); }
+    });
+    cv.addEventListener('pointerup', e => {
+      if (cv._sel){
+        const [a, b] = cv._sel, t0 = timeAt(Math.min(a, b)), t1 = timeAt(Math.max(a, b));
+        cv._sel = null; overlay(cv); suppress = true; setTimeout(() => suppress = false, 50);
+        if (t1 - t0 >= (cv._d.step || 60)) PS.onZoom(cv, Math.floor(t0), Math.ceil(t1));
+      }
+      drag = null;
+    });
+    cv.addEventListener('pointercancel', () => { drag = null; cv._sel = null; overlay(cv); });
+    cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; if (!drag) setHover(null); });
+    cv.addEventListener('dblclick', () => PS.onZoomReset?.(cv));
     if (onPick){
-      cv.style.cursor = 'pointer';
       cv.addEventListener('click', e => {
+        if (suppress) return;
         const p = bucketAt(e); if (!p) return;
         if (e.pointerType === 'touch' && lastTouch !== p.t){ lastTouch = p.t; return; }
         lastTouch = null; tip.style.display = 'none';

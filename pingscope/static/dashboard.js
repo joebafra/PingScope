@@ -1,11 +1,12 @@
 /* PingScope dashboard */
 (() => {
-const {$, $$, esc, store, api, sortTargets, classicStats, fmtMs, fmtLoss, fmtDT, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
+const {$, $$, esc, store, api, sortTargets, classicStats, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
 const RANGES = {'3h': 'Last 3 hours', '1d': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days', '1y': 'Last year'};
 const S = {
   data: null, groups: new Map(), kids: new Map(), targets: new Map(), byGroup: new Map(),
   fam: store.get('ps_fam', 'all'), range: store.get('ps_range', '1d'), q: '',
   expanded: new Set(store.get('ps_open', [])), sort: store.get('ps_sort', 'order'), sig: '',
+  zoom: {},  // range -> {start, end}: graphs of that range show a period selected by dragging
 };
 const main = $('#main');
 
@@ -97,6 +98,7 @@ const io = new IntersectionObserver(es => es.forEach(e => {
 function chart(key, range, onPick, onData){
   const cv = document.createElement('canvas');
   cv.className = 'chart'; cv.dataset.key = key; cv.dataset.range = range; cv._onData = onData;
+  cv._zoom = S.zoom[range] || null;
   hookChart(cv, onPick); io.observe(cv);
   requestAnimationFrame(() => draw(cv));
   return cv;
@@ -104,15 +106,38 @@ function chart(key, range, onPick, onData){
 async function loadChart(cv){
   cv._loaded = Date.now();
   try {
-    const d = await api(`api/series?key=${cv.dataset.key}&range=${cv.dataset.range}&points=${Math.max(100, Math.min(2000, Math.round(cv.clientWidth || 600)))}`);
+    const z = cv._zoom ? `&start=${cv._zoom.start}&end=${cv._zoom.end}` : '';
+    const d = await api(`api/series?key=${cv.dataset.key}&range=${cv.dataset.range}${z}&points=${Math.max(100, Math.min(2000, Math.round(cv.clientWidth || 600)))}`);
     draw(cv, d); cv._onData?.(d);
   } catch(e){ cv._loaded = 0; }
 }
 function clearCharts(){ $$('canvas.chart', main).forEach(c => io.unobserve(c)); }
 setInterval(() => {
   const iv = (S.data?.interval || 60) * 1000;
-  $$('canvas.chart', main).forEach(c => { if (c._vis && Date.now() - (c._loaded || 0) > iv - 5000) loadChart(c); });
+  $$('canvas.chart', main).forEach(c => { if (c._vis && !c._zoom && Date.now() - (c._loaded || 0) > iv - 5000) loadChart(c); });
 }, 10000);
+
+// ---------- zoom: drag over a graph to look at that period (all graphs of the same range follow) ----------
+function applyZoom(range){
+  for (const c of $$('canvas.chart', main)){
+    if (c.dataset.range !== range) continue;
+    c._zoom = S.zoom[range] || null;
+    if (c._vis) loadChart(c); else c._loaded = 0;
+  }
+  zoomBar();
+}
+PS.onZoom = (cv, start, end) => { S.zoom[cv.dataset.range] = {start, end}; applyZoom(cv.dataset.range); };
+PS.onZoomReset = cv => { if (S.zoom[cv.dataset.range]){ delete S.zoom[cv.dataset.range]; applyZoom(cv.dataset.range); } };
+const zoomLabel = z => `${fmtShort(z.start)} – ${z.end - z.start < 86400 && new Date(z.start * 1000).getDate() === new Date(z.end * 1000).getDate() ? new Date(z.end * 1000).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}) : fmtShort(z.end)}`;
+function zoomBar(){
+  let bar = $('#zoombar');
+  const ranges = Object.keys(S.zoom);
+  if (!ranges.length){ bar?.remove(); return; }
+  if (!bar){ bar = document.createElement('div'); bar.id = 'zoombar'; main.prepend(bar); }
+  const many = ranges.length > 1 || currentRoute().view === 'target';
+  bar.innerHTML = ranges.map(r => `<div><span>🔍 Zoomed in${many ? ` (${esc(RANGES[r])})` : ''}: <b>${zoomLabel(S.zoom[r])}</b></span><button class="btn sm" data-unzoom="${r}">Reset zoom</button></div>`).join('');
+  bar.onclick = e => { const b = e.target.closest('[data-unzoom]'); if (b){ delete S.zoom[b.dataset.unzoom]; applyZoom(b.dataset.unzoom); } };
+}
 
 // ---------- routing ----------
 function currentRoute(){
@@ -125,6 +150,7 @@ function currentRoute(){
 }
 function route(){
   clearCharts();
+  S.zoom = {};
   const r = currentRoute();
   renderNav();
   if (r.view === 'group') viewGroup(r.id);
@@ -253,7 +279,10 @@ function famBox(t, f, range, big, onPick){
   title.textContent = `${RANGES[range]} · IPv${f} · ${t.name}`;
   box.appendChild(title);
   const cs = document.createElement('div'); cs.className = 'cstats';
-  box.appendChild(chart(s.key, range, onPick, d => { cs.innerHTML = classicStats(d); }));
+  box.appendChild(chart(s.key, range, onPick, d => {
+    cs.innerHTML = classicStats(d);
+    title.textContent = `${d.custom ? zoomLabel(d) : RANGES[range]} · IPv${f} · ${t.name}`;
+  }));
   box.appendChild(cs);
   return box;
 }

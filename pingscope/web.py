@@ -270,22 +270,35 @@ def tree(request: Request, _=Depends(can_view)):
 
 @app.get("/api/series")
 def series(request: Request, key: str, range: str = "1d", points: int = Query(600, ge=50, le=2000),
-           _=Depends(can_view)):
+           start: int | None = None, end: int | None = None, _=Depends(can_view)):
+    """A fixed range ending now, or a custom period (start/end, unix seconds) for zooming in."""
     if not SERIES_RE.match(key):
         raise HTTPException(400, "Invalid series")
     if not _visible_to(request, int(key.split("-")[0])):
         raise HTTPException(404, "Not found")
-    if range not in RANGES:
-        raise HTTPException(400, "Unknown range")
     s = store.settings()
-    sec = RANGES[range]
-    source = "raw" if sec <= min(7 * 86400, s["raw_retention_days"] * 86400) else "hourly"
+    now = int(time.time())
+    raw_from = now - s["raw_retention_days"] * 86400
+    custom = start is not None and end is not None
+    if custom:
+        end = min(int(end), now)
+        start = max(int(start), now - 5 * 365 * 86400)
+        if end - start < 5 * s["interval"]:  # at least a few rounds
+            mid = (start + end) // 2
+            start, end = mid - 3 * s["interval"], mid + 3 * s["interval"]
+        sec = end - start
+        source = "raw" if start >= raw_from and sec <= 7 * 86400 else "hourly"
+    else:
+        if range not in RANGES:
+            raise HTTPException(400, "Unknown range")
+        sec = RANGES[range]
+        source = "raw" if sec <= min(7 * 86400, s["raw_retention_days"] * 86400) else "hourly"
+        end = now
+        start = end - sec
     native = s["interval"] if source == "raw" else 3600
     step = max(native, math.ceil(sec / points / native) * native)
-    end = int(time.time())
-    start = end - sec
     start -= start % step
-    return {"key": key, "start": start, "end": end, "step": step, "source": source,
+    return {"key": key, "start": start, "end": end, "step": step, "source": source, "custom": custom,
             "points": store.series(key, start, end, step, source)}
 
 

@@ -11,6 +11,7 @@ Latency and packet-loss monitoring for **IPv4 and IPv6**, in the spirit of Smoke
   - Grey "smoke" shows the spread of all probes.
   - The median line changes colour with packet loss.
   - Ranges: 3 hours, day, week, month, year.
+- **Interactive graphs:** a crosshair follows the mouse on all graphs at once (same moment on IPv4 and IPv6), and you can drag across a graph to zoom in on that period; double-click or *Reset zoom* to go back.
 - **mtr traceroutes:**
   - Every 15 minutes normally, every minute while a target has packet loss or is down.
   - Click a time, or a point in a graph, to open the hop-by-hop report.
