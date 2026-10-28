@@ -32,9 +32,14 @@ def parse_fping(text):
     return res
 
 
+def fping_cmd(addrs, family, count, s):
+    """The exact fping command line used for a measurement round (also used by `pingscope ping-test`)."""
+    return ["fping", f"-{family}", "-q", "-C", str(count), "-p", str(s["probe_spacing_ms"]),
+            "-t", str(s["timeout_ms"]), "-i", "5", "-B1", "-r0", *addrs]
+
+
 async def fping(addrs, family, count, s):
-    cmd = ["fping", f"-{family}", "-q", "-C", str(count), "-p", str(s["probe_spacing_ms"]),
-           "-t", str(s["timeout_ms"]), "-i", "5", "-B1", "-r0", *addrs]
+    cmd = fping_cmd(addrs, family, count, s)
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, err = await proc.communicate()
