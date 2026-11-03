@@ -72,6 +72,7 @@ function renderNav(){
   };
   $('#nav').innerHTML =
     `<ul><li><a href="#/" class="${r.view === 'overview' ? 'on' : ''}"><span class="caret"></span><span class="name">Overview</span><span class="cnt">${S.data.targets.length}</span></a></li>` +
+    `<li><a href="#/history" class="${r.view === 'history' ? 'on' : ''}"><span class="caret"></span><span class="dot ${S.data.active_alerts ? 'loss' : 'ok'}"></span><span class="name">History</span><span class="cnt">${S.data.active_alerts || 0}</span></a></li>` +
     `<li><a href="#/problems" class="${r.view === 'problems' ? 'on' : ''}"><span class="caret"></span><span class="dot ${problems ? 'down' : 'ok'}"></span><span class="name">Problems</span><span class="cnt">${problems}</span></a></li></ul>` +
     `<div class="sep"></div><ul>${kids(null).map(node).join('')}</ul>`;
 }
@@ -146,6 +147,7 @@ function currentRoute(){
   if ((m = h.match(/^g\/(\d+)/))) return {view: 'group', id: +m[1]};
   if ((m = h.match(/^t\/(\d+)/))) return {view: 'target', id: +m[1]};
   if (h.startsWith('problems')) return {view: 'problems'};
+  if (h.startsWith('history')) return {view: 'history'};
   return {view: 'overview'};
 }
 function route(){
@@ -157,6 +159,7 @@ function route(){
   $('#range')?.classList.toggle('hidden', r.view !== 'group' && r.view !== 'target');
   if (r.view === 'group') viewGroup(r.id);
   else if (r.view === 'target') viewTarget(r.id);
+  else if (r.view === 'history') viewHistory();
   else viewOverview(r.view === 'problems');
   document.title = (r.view === 'target' ? (S.targets.get(r.id)?.name + ' · ') : r.view === 'group' ? (S.groups.get(r.id)?.name + ' · ') : '') + S.data.site.title;
 }
@@ -209,6 +212,47 @@ function fillOverview(problemsOnly){
 }
 
 // ---------- group page ----------
+// ---------- alert history ----------
+const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
+const dayLabel = t => new Date(t * 1000).toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'long'});
+const hhmm = t => new Date(t * 1000).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+let histSeq = 0;
+async function viewHistory(){
+  const days = store.get('ps_hdays', 7), seq = ++histSeq;
+  if (!$('#hbody')){
+    main.innerHTML = `<h1>Alert history</h1>
+      <div class="muted">Packet loss and outages that triggered an alert, for groups with notifications on.</div>
+      <div class="toolbar" style="margin-top:14px"><div class="seg" id="hdays">${[[1, '24 hours'], [7, '7 days'], [30, '30 days'], [90, '90 days']].map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div><span class="muted small" id="hcount"></span></div>
+      <div class="tiles" id="htiles"></div><div id="hbody"><div class="empty">Loading…</div></div>`;
+    seg('#hdays', () => String(store.get('ps_hdays', 7)), v => { store.set('ps_hdays', +v); viewHistory(); });
+  }
+  let r;
+  try { r = await api(`api/history?days=${days}`); } catch(e){ $('#hbody').innerHTML = `<div class="empty">Could not load: ${esc(e.message)}</div>`; return; }
+  if (currentRoute().view !== 'history' || seq !== histSeq || !$('#hbody')) return;
+  const q = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = r.alerts.filter(a => q.every(w => `${a.name} ${a.group}`.toLowerCase().includes(w)));
+  const open = rows.filter(a => !a.ended), done = rows.filter(a => a.ended);
+  const dur = done.reduce((n, a) => n + (a.ended - a.started), 0);
+  $('#htiles').innerHTML =
+    `<div class="tile"><b style="color:${open.length ? 'var(--bad)' : 'var(--ok)'}">${open.length}</b><span>active now</span></div>` +
+    `<div class="tile"><b>${rows.length}</b><span>alerts in ${r.days === 1 ? '24 hours' : r.days + ' days'}</span></div>` +
+    `<div class="tile"><b>${new Set(rows.map(a => a.target_id)).size}</b><span>targets affected</span></div>` +
+    `<div class="tile"><b style="color:var(--bad)">${rows.filter(a => a.kind === 'down').length}</b><span>outages (down)</span></div>` +
+    `<div class="tile"><b>${done.length ? fmtDur(dur / done.length) : '–'}</b><span>average duration</span></div>`;
+  const kind = a => a.kind === 'down' ? 'down' : 'packet loss';
+  const row = a => `<tr>
+      <td><span class="hkind ${a.ended ? 'ok' : a.kind}">${a.ended ? 'resolved' : kind(a)}</span>${a.ended ? `<div class="faint small">was ${kind(a)}</div>` : ''}</td>
+      <td><a href="#/t/${a.target_id}"><b>${esc(a.name)}</b></a> <span class="badge">IPv${a.family}</span><div class="muted small">${esc(a.group)}</div></td>
+      <td class="small" style="white-space:nowrap">${a.ended && dayLabel(a.started) !== dayLabel(a.ended) ? fmtShort(a.started) : hhmm(a.started)} → ${a.ended ? (dayLabel(a.started) !== dayLabel(a.ended) ? fmtShort(a.ended) : hhmm(a.ended)) : '<b>now</b>'}<div class="muted">${fmtDur((a.ended || r.now) - a.started)}</div></td>
+      <td class="small">worst ${a.peak_loss == null ? '–' : a.peak_loss.toFixed(0) + '%'}${!a.ended && a.last_loss != null ? `<div class="muted">now ${a.last_loss.toFixed(0)}%</div>` : ''}</td></tr>`;
+  const table = list => `<div class="tblwrap"><table class="tbl htbl"><thead><tr><th>Status</th><th>Target</th><th>Time</th><th>Loss</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table></div>`;
+  let html = open.length ? `<h3>Active now</h3>${table(open)}` : '';
+  const byDay = new Map();
+  for (const a of done){ const k = dayLabel(a.started); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(a); }
+  for (const [k, list] of byDay) html += `<h3>${esc(k)} <span class="muted small" style="text-transform:none;letter-spacing:0">· ${list.length} alert${list.length === 1 ? '' : 's'}</span></h3>${table(list)}`;
+  $('#hbody').innerHTML = html || `<div class="empty">${S.q ? 'No alerts match your search.' : 'No alerts in this period. 🎉'}</div>`;
+  $('#hcount').textContent = S.q ? `${rows.length} of ${r.alerts.length} alerts` : '';
+}
 function viewGroup(gid){
   const g = S.groups.get(gid);
   if (!g){ main.innerHTML = '<div class="empty">Group not found.</div>'; return; }
@@ -454,6 +498,7 @@ async function refresh(first){
     renderNav();
     const r = currentRoute();
     if (r.view === 'overview' || r.view === 'problems') fillOverview(r.view === 'problems');
+    else if (r.view === 'history') viewHistory();
     else { updateValues(); if (r.view === 'target') pollMtr(); }
   } catch(e){
     if (e.status === 401){ location.href = 'admin?next=' + encodeURIComponent(location.hash); return; }
@@ -481,6 +526,7 @@ $('#search').addEventListener('input', e => {
     const r = currentRoute();
     if (r.view === 'target' && S.q) location.hash = '#/';
     else if (r.view === 'overview' || r.view === 'problems') fillOverview(r.view === 'problems');
+    else if (r.view === 'history') viewHistory();
     else route();
   }, 150);
 });

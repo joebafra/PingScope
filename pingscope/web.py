@@ -258,6 +258,7 @@ def tree(request: Request, _=Depends(can_view)):
             item.update(host=t["host"], host_v6=t["host_v6"],
                         port=t["port"] if t["probe"] != "ping" else None)
         targets.append(item)
+    shown_ids = {t["id"] for t in targets}
     return {
         "site": {"title": s["site_title"], "remark": s["site_remark"], "theme": s["theme"]},
         "groups": groups, "targets": targets,
@@ -265,7 +266,33 @@ def tree(request: Request, _=Depends(can_view)):
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
         "mtr": bool(s["mtr_enabled"] and collector.mtr.available), "mtr_interval": s["mtr_interval"],
         "logged_in": admin, "can_edit": bool(user and user["role"] == "admin"),
+        "active_alerts": sum(1 for a in store.open_alerts() if a["target_id"] in shown_ids),
     }
+
+
+@app.get("/api/history")
+def history(request: Request, days: int = Query(7, ge=1, le=90), _=Depends(can_view)):
+    """Alert history for the dashboard: same visibility rules as the tree, no addresses."""
+    logged_in = current_user(request) is not None
+    groups = {g["id"]: g for g in store.groups()}
+    visible = {tid: t for tid, t in ((t["id"], t) for t in store.targets(enabled_only=True))
+               if logged_in or not groups.get(t["group_id"], {}).get("hidden_effective")}
+
+    def path(gid):
+        out = []
+        while gid in groups:
+            out.insert(0, groups[gid]["name"])
+            gid = groups[gid]["parent_id"]
+        return " › ".join(out)
+
+    rows = []
+    for a in store.alerts_since(int(time.time()) - days * 86400):
+        t = visible.get(a["target_id"])
+        if t:
+            rows.append({"id": a["id"], "target_id": t["id"], "name": t["name"], "group": path(t["group_id"]),
+                         "group_id": t["group_id"], "family": a["family"], "kind": a["kind"], "started": a["started"],
+                         "ended": a["ended"], "peak_loss": a["peak_loss"], "last_loss": a["last_loss"]})
+    return {"alerts": rows, "now": int(time.time()), "days": days}
 
 
 @app.get("/api/series")

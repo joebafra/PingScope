@@ -543,6 +543,11 @@ class Store:
             with self.lock, self.c:
                 self.c.execute(f"UPDATE alerts SET {', '.join(k + '=?' for k in f)} WHERE id=?", (*f.values(), aid))
 
+    def alerts_since(self, since, limit=1000):
+        """Alerts still open or ended after `since`, newest first."""
+        return [dict(r) for r in self._q("SELECT * FROM alerts WHERE ended IS NULL OR ended>=? "
+                                         "ORDER BY started DESC LIMIT ?", (since, limit))]
+
     def alert_list(self, limit=200):
         return [dict(r) for r in self._q("SELECT * FROM alerts ORDER BY ended IS NOT NULL, started DESC LIMIT ?", (limit,))]
 
