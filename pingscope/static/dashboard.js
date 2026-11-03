@@ -153,6 +153,8 @@ function route(){
   S.zoom = {};
   const r = currentRoute();
   renderNav();
+  // the period buttons only mean something where graphs are shown
+  $('#range')?.classList.toggle('hidden', r.view !== 'group' && r.view !== 'target');
   if (r.view === 'group') viewGroup(r.id);
   else if (r.view === 'target') viewTarget(r.id);
   else viewOverview(r.view === 'problems');
@@ -309,8 +311,13 @@ function viewTarget(tid){
     `<div class="legend" style="margin-top:12px">${PS.legendHTML()}</div>`;
   const fams = visibleFams();
   const box = $('#ranges');
-  for (const [r, label] of Object.entries(RANGES)){
+  // the range picked in the header comes first, the other ranges follow below it
+  const order = [S.range, ...Object.keys(RANGES).filter(r => r !== S.range)];
+  for (const r of order){
+    const label = RANGES[r];
     const h = document.createElement('h3'); h.textContent = label; box.appendChild(h);
+    if (r === S.range && order.length > 1){ h.classList.add('chosen'); }
+    if (r === order[1]){ h.insertAdjacentHTML('beforebegin', '<div class="muted small" style="margin:22px 0 -4px">Other periods</div>'); }
     const grid = document.createElement('div'); grid.className = 'rangegrid' + (fams.length === 1 ? ' single' : '');
     for (const f of fams){
       const card = document.createElement('div'); card.className = 'card pad big';
@@ -460,7 +467,12 @@ function seg(sel, get, set){
   el.onclick = e => { const b = e.target.closest('button'); if (!b) return; set(b.dataset.v); paint(); };
   paint();
 }
-seg('#range', () => S.range, v => { S.range = v; store.set('ps_range', v); if (currentRoute().view === 'group') route(); });
+seg('#range', () => S.range, v => {
+  S.range = v; store.set('ps_range', v);
+  const view = currentRoute().view;
+  if (view === 'group') route();
+  else if (view === 'target'){ const y = scrollY; route(); if (y > 0) $('#ranges')?.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+});
 seg('#fam', () => S.fam, v => { S.fam = v; store.set('ps_fam', v); route(); });
 let st;
 $('#search').addEventListener('input', e => {
