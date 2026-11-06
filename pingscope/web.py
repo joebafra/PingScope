@@ -243,7 +243,7 @@ def tree(request: Request, _=Depends(can_view)):
         for g in groups:
             g.pop("hidden", None)
             g.pop("hidden_effective", None)
-            for k in ("alert_mode", "alert_loss", "alert_down", "alert_email", "alert_effective"):
+            for k in [k for k in g if k.startswith("alert_")]:  # notification settings incl. Telegram chat IDs
                 g.pop(k, None)
     visible = {g["id"] for g in groups}
     targets = []
