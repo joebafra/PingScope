@@ -32,6 +32,8 @@ main{padding:18px 20px 40px;min-width:0}
 .nav li.open>ul{display:block}
 .nav .sep{height:1px;background:var(--line);margin:8px 6px}
 .powered{font-size:11px;color:var(--faint);padding:16px 10px 0}
+.powered a{color:inherit;text-decoration:underline;text-decoration-color:var(--line)}
+.powered a:hover{color:var(--accent);text-decoration-color:currentColor}
 .crumbs{font-size:12px;color:var(--muted);margin-bottom:6px}
 .crumbs a{color:var(--muted)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 18px}
@@ -193,7 +195,7 @@ details.mtr summary:hover .mt{color:var(--accent)}
   <a class="btn" id="adminLink" href="admin">Admin</a>
 </header>
 <div class="layout">
-  <aside><nav class="nav" id="nav"></nav><div class="powered">Powered by PingScope</div></aside>
+  <aside><nav class="nav" id="nav"></nav><div class="powered">Powered by <a href="https://github.com/joebafra/PingScope" target="_blank" rel="noopener noreferrer">PingScope</a></div></aside>
   <main id="main"><div class="empty">Loading…</div></main>
 </div>
 <div id="tip"></div>
