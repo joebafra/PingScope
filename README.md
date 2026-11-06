@@ -201,7 +201,9 @@ docker run -d --name pingscope --restart unless-stopped \
 docker logs pingscope 2>&1 | grep "setup code"
 ```
 
-Then open `http://<server>:8080/admin`. Host networking lets PingScope measure with the machine's own IPv4 and IPv6 (this needs a Linux Docker host), and `NET_RAW` is needed for ping and mtr. Tags: `latest` (newest on `main`), a version such as `1.0.0-beta` for each release, and `sha-<commit>`. The image is plain HTTP; for HTTPS use the installer above or your own reverse proxy with `PINGSCOPE_LISTEN=127.0.0.1`. More on the [Docker Hub page](https://hub.docker.com/r/joebafra/pingscope).
+Then open `http://<server-ip>:8080/admin`: plain HTTP by IP address works out of the box, no hostname or certificate needed. Use that on a trusted network (LAN, VPN) only, because the login isn't encrypted; for HTTPS use the installer above or your own reverse proxy with `PINGSCOPE_LISTEN=127.0.0.1`.
+
+Host networking lets PingScope measure with the machine's own IPv4 and IPv6 (this needs a Linux Docker host), and `NET_RAW` is needed for ping and mtr. Tags: `latest` (newest on `main`), a version such as `1.0.0-beta` for each release, and `sha-<commit>`. More on the [Docker Hub page](https://hub.docker.com/r/joebafra/pingscope).
 
 To build the image yourself instead:
 

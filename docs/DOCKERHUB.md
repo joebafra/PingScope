@@ -26,7 +26,7 @@ docker run -d --name pingscope --restart unless-stopped \
   joebafra/pingscope:latest
 ```
 
-Get the one-time setup code and open `http://<server>:8080/admin` to create your admin account:
+Get the one-time setup code and open `http://<server-ip>:8080/admin` to create your admin account:
 
 ```bash
 docker logs pingscope 2>&1 | grep "setup code"
@@ -54,9 +54,13 @@ services:
       TZ: Europe/Amsterdam
 ```
 
-## HTTPS
+## HTTP by IP address, or HTTPS
 
-PingScope speaks plain HTTP. Put it behind a reverse proxy for HTTPS (Caddy, nginx, Traefik) and set `PINGSCOPE_LISTEN=127.0.0.1`. The installer in the GitHub repository sets up PingScope with Caddy and a Let's Encrypt certificate in one go: see the [install guide](https://github.com/joebafra/PingScope/blob/main/docs/INSTALL.md).
+**Plain HTTP works out of the box:** the container listens on all addresses, so open `http://<server-ip>:8080`. No hostname or certificate is needed. Open the port in the firewall if needed (`ufw allow 8080/tcp`), or use `-e PINGSCOPE_PORT=80` for `http://<server-ip>` without a port number.
+
+Without HTTPS the login and password go over the network unencrypted, so use plain HTTP on a trusted network (LAN, VPN) only.
+
+**For HTTPS**, put PingScope behind a reverse proxy (Caddy, nginx, Traefik) and set `PINGSCOPE_LISTEN=127.0.0.1`. The installer in the GitHub repository sets up PingScope with Caddy and a Let's Encrypt certificate in one go: see the [install guide](https://github.com/joebafra/PingScope/blob/main/docs/INSTALL.md).
 
 ## Tags
 
