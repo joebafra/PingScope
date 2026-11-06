@@ -172,11 +172,39 @@ const PS = (() => {
       c.fillStyle = `rgba(${smoke},${Math.min(.35, .9 / Math.ceil(k / 2))})`;
       for (let i = 0; i < Math.floor(k / 2); i++){ const y1 = Y(q[k - 1 - i]), y2 = Y(q[i]); c.fillRect(x, y1, bw, Math.max(1, y2 - y1)); }
     }
-    // 2) median line on top, coloured by packet loss, with a thin dark edge so it stands out on the smoke
-    const lw = H >= 160 ? 3 : 2.5, w = Math.max(bw, 2), dark = isDark();
-    const meds = d.points.filter(p => p.sent && p.q.length).map(p => [X(p.t), Y(med(p.q)), p.lost / p.sent * 100]);
-    if (!dark){ c.fillStyle = 'rgba(0,0,0,.45)'; for (const [x, y] of meds) c.fillRect(x - 0.5, y - lw / 2 - 0.75, w + 1, lw + 1.5); }
-    for (const [x, y, loss] of meds){ c.fillStyle = lossColor(loss); c.fillRect(x, y - lw / 2, w, lw); }
+    // 2) median line on top, coloured by packet loss. Like SmokePing it is one continuous step line: level across
+    //    each bucket, then a vertical step to the next bucket. Missing measurements stay a gap. In light mode a thin
+    //    dark edge under the line keeps it visible on the smoke.
+    const lw = H >= 160 ? 3 : 2.5, dark = isDark();
+    const runs = [];  // stretches of consecutive buckets with a median
+    for (const p of d.points){
+      if (!p.sent || !p.q.length) continue;
+      const m = {t: p.t, x: X(p.t), y: Y(med(p.q)), col: lossColor(p.lost / p.sent * 100)};
+      const run = runs[runs.length - 1], prev = run && run[run.length - 1];
+      if (prev && m.t - prev.t <= d.step * 1.5) run.push(m); else runs.push([m]);
+    }
+    c.lineJoin = 'miter'; c.lineCap = 'square';
+    if (!dark){
+      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = lw + 1.5;
+      for (const run of runs){
+        c.beginPath();
+        run.forEach((m, i) => { if (i) c.lineTo(m.x, m.y); else c.moveTo(m.x, m.y); c.lineTo(m.x + bw, m.y); });
+        c.stroke();
+      }
+    }
+    c.lineWidth = lw;
+    for (const run of runs){
+      for (let i = 0; i < run.length;){  // one stroke per stretch of the same colour, starting at the previous step
+        const col = run[i].col;
+        c.beginPath();
+        if (i){ c.moveTo(run[i - 1].x + bw, run[i - 1].y); c.lineTo(run[i].x, run[i].y); } else c.moveTo(run[i].x, run[i].y);
+        let j = i;
+        for (; j < run.length && run[j].col === col; j++){ if (j > i) c.lineTo(run[j].x, run[j].y); c.lineTo(run[j].x + bw, run[j].y); }
+        c.strokeStyle = col; c.stroke();
+        i = j;
+      }
+    }
+    c.lineCap = 'butt';
   }
 
   function chartStats(d){
