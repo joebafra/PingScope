@@ -1,0 +1,93 @@
+# Builds the PingScope image for amd64 and arm64 and publishes it on Docker Hub.
+#
+#   push to main      → <user>/pingscope:latest  (+ sha-<commit>)
+#   tag v1.2.3        → <user>/pingscope:1.2.3   (+ sha-<commit>)
+#   pull request      → build only, nothing is pushed
+#
+# Setup (once): GitHub → Settings → Secrets and variables → Actions
+#   secret   DOCKERHUB_TOKEN     a Docker Hub access token (Read, Write, Delete)
+#   variable DOCKERHUB_USERNAME  only if your Docker Hub name is not "joebafra"
+# Without the token the image is only built, so this workflow never fails for lack of it.
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME || 'joebafra' }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish to Docker Hub?
+        id: publish
+        env:
+          HAS_TOKEN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ "$HAS_TOKEN" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Building only. Add the DOCKERHUB_TOKEN secret to publish the image on Docker Hub."
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.publish.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_USERNAME }}/pingscope
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=PingScope
+            org.opencontainers.image.description=Latency and packet-loss monitoring for IPv4 and IPv6, SmokePing-style, with a web admin panel
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build (and push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ steps.publish.outputs.enabled == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update the Docker Hub description
+        if: steps.publish.outputs.enabled == 'true' && github.ref == 'refs/heads/main'
+        continue-on-error: true  # e.g. a token without the Delete scope; the image itself is published
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_USERNAME }}/pingscope
+          short-description: Latency and packet-loss monitoring for IPv4 and IPv6, SmokePing-style
+          readme-filepath: docs/DOCKERHUB.md

@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB.svg?logo=python&logoColor=white">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688.svg?logo=fastapi&logoColor=white">
-  <img alt="Docker Compose" src="https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker&logoColor=white">
+  <a href="https://hub.docker.com/r/joebafra/pingscope"><img alt="Docker Hub: joebafra/pingscope" src="https://img.shields.io/badge/docker%20hub-joebafra%2Fpingscope-2496ED.svg?logo=docker&logoColor=white"></a>
   <img alt="IPv4 and IPv6" src="https://img.shields.io/badge/IPv4%20%2B%20IPv6-side%20by%20side-16a34a.svg">
 </p>
 
@@ -164,6 +164,7 @@ Afterwards, **Admin → IPv6** finds AAAA records for the targets that are still
 - **HTTPS out of the box:** [Caddy](https://caddyserver.com/) gets a Let's Encrypt certificate for your hostname, renews it, redirects HTTP to HTTPS and sends HSTS.
 - **Automatic updates:** a systemd timer checks GitHub every 5 minutes. A new version is installed with a **database backup first**, a health check afterwards, and an **automatic rollback** if it doesn't start.
 - Runs with **Docker Compose** (recommended) or as a plain **systemd** service, behind Caddy, nginx, Apache or any other reverse proxy.
+- A ready-made **Docker image** for amd64 and arm64 on [Docker Hub](https://hub.docker.com/r/joebafra/pingscope), built automatically from `main` and from every release.
 - Small: 1 vCPU and 1 GB RAM is plenty for a few hundred targets.
 
 ## Quick start
@@ -185,23 +186,30 @@ The installer asks for your hostname and email, sets up Docker, the **Let's Encr
 - Telegram and email: **[Notifications](docs/INSTALL.md#4a-notifications-telegram-and-email)**
 - Updates, backups and useful commands: **[section 5](docs/INSTALL.md#5-updating-backups-and-useful-commands)**
 
-### Try it without a hostname
+### Docker image
 
-On any Linux machine with Docker:
-
-```bash
-git clone https://github.com/joebafra/PingScope.git && cd PingScope
-```
+The image [`joebafra/pingscope`](https://hub.docker.com/r/joebafra/pingscope) on Docker Hub runs PingScope on any Linux machine with Docker, for a quick try or behind your own reverse proxy:
 
 ```bash
-docker compose up -d --build
+docker run -d --name pingscope --restart unless-stopped \
+  --network host --cap-add NET_RAW \
+  -v pingscope-data:/data -e TZ=Europe/Amsterdam \
+  joebafra/pingscope:latest
 ```
 
 ```bash
 docker logs pingscope 2>&1 | grep "setup code"
 ```
 
-Then open <http://localhost:8080/admin>. Without a `.env` file Caddy isn't started and PingScope listens on `127.0.0.1:8080` only. The container uses host networking (to measure with the machine's own IPv4 and IPv6), which needs a Linux Docker host.
+Then open `http://<server>:8080/admin`. Host networking lets PingScope measure with the machine's own IPv4 and IPv6 (this needs a Linux Docker host), and `NET_RAW` is needed for ping and mtr. Tags: `latest` (newest on `main`), a version such as `1.0.0-beta` for each release, and `sha-<commit>`. The image is plain HTTP; for HTTPS use the installer above or your own reverse proxy with `PINGSCOPE_LISTEN=127.0.0.1`. More on the [Docker Hub page](https://hub.docker.com/r/joebafra/pingscope).
+
+To build the image yourself instead:
+
+```bash
+git clone https://github.com/joebafra/PingScope.git && cd PingScope && docker compose up -d --build
+```
+
+Without a `.env` file Caddy isn't started and PingScope listens on `127.0.0.1:8080` only.
 
 ### Run from source
 
