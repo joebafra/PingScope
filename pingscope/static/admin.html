@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Admin · PingScope</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M5 20h5l3-9 4 14 3-9h7' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>try{var s=JSON.parse(localStorage.getItem('ps_scheme'));if(s==='light'||s==='dark')document.documentElement.dataset.scheme=s}catch(e){}</script>
 <link rel="stylesheet" href="static/style.css">
 <style>
 header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap}
@@ -87,6 +88,7 @@ tr.off td{opacity:.5}
 <body>
 <header>
   <a class="brand" href="./"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M5 20h5l3-9 4 14 3-9h7" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="siteTitle">PingScope</span><small>Admin</small></a>
+  <div id="scheme"></div>
   <a class="btn" href="./">Dashboard</a>
   <span class="muted small hidden" id="who"></span>
   <button class="btn hidden" id="logout">Log out</button>

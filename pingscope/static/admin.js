@@ -842,5 +842,6 @@ async function viewUsers(){
   bindPassword();
 }
 
+PS.schemeSwitch($('#scheme'));
 boot().catch(e => { main.innerHTML = `<div class="empty">Could not load: ${esc(e.message)}</div>`; });
 })();

@@ -173,7 +173,7 @@ const PS = (() => {
       for (let i = 0; i < Math.floor(k / 2); i++){ const y1 = Y(q[k - 1 - i]), y2 = Y(q[i]); c.fillRect(x, y1, bw, Math.max(1, y2 - y1)); }
     }
     // 2) median line on top, coloured by packet loss, with a thin dark edge so it stands out on the smoke
-    const lw = H >= 160 ? 3 : 2.5, w = Math.max(bw, 2), dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const lw = H >= 160 ? 3 : 2.5, w = Math.max(bw, 2), dark = isDark();
     const meds = d.points.filter(p => p.sent && p.q.length).map(p => [X(p.t), Y(med(p.q)), p.lost / p.sent * 100]);
     if (!dark){ c.fillStyle = 'rgba(0,0,0,.45)'; for (const [x, y] of meds) c.fillRect(x - 0.5, y - lw / 2 - 0.75, w + 1, lw + 1.5); }
     for (const [x, y, loss] of meds){ c.fillStyle = lossColor(loss); c.fillRect(x, y - lw / 2, w, lw); }
@@ -260,6 +260,36 @@ const PS = (() => {
   addEventListener('resize', (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => $$('canvas.chart').forEach(c => draw(c)), 150); }; })());
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => $$('canvas.chart').forEach(c => draw(c)));
 
+  // Colour scheme per visitor: follow the system (default), or always light / always dark.
+  // The page <head> applies the stored choice before the CSS loads, so there is no flash.
+  const SCHEMES = [
+    ['system', 'Follow the system setting', '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'],
+    ['light', 'Light', '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
+    ['dark', 'Dark', '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'],
+  ];
+  const getScheme = () => { const v = store.get('ps_scheme', 'system'); return SCHEMES.some(x => x[0] === v) ? v : 'system'; };
+  function applyScheme(v = getScheme()){
+    const r = document.documentElement;
+    if (v === 'light' || v === 'dark') r.dataset.scheme = v; else delete r.dataset.scheme;
+    requestAnimationFrame(() => $$('canvas.chart').forEach(c => draw(c)));
+  }
+  function isDark(){
+    const r = document.documentElement;
+    if (r.dataset.theme === 'classic') return false;  // the Classic style is always light
+    if (r.dataset.scheme) return r.dataset.scheme === 'dark';
+    return matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function schemeSwitch(el){
+    if (!el) return;
+    el.classList.add('seg', 'icons');
+    el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Colour scheme');
+    el.innerHTML = SCHEMES.map(([v, label, path]) => `<button type="button" data-v="${v}" title="${label}" aria-label="${label}">` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></button>`).join('');
+    const paint = () => el.querySelectorAll('button').forEach(b => { const on = b.dataset.v === getScheme(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    el.onclick = e => { const b = e.target.closest('button[data-v]'); if (!b) return; store.set('ps_scheme', b.dataset.v); applyScheme(b.dataset.v); paint(); };
+    paint();
+  }
+
   // Order targets of one group: by name (natural A→Z, ping before dns before tcp) or by manual order
   const PROBE_ORDER = {ping: 0, dns: 1, tcp: 2};
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}) ||
@@ -275,5 +305,5 @@ const PS = (() => {
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
-          med, draw, chartStats, hookChart, legendHTML, LOCALE};
+          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme};
 })();

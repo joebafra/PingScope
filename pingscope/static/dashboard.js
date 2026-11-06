@@ -267,7 +267,7 @@ function viewGroup(gid){
   const shown = sections.reduce((n, s) => n + s.ts.length, 0);
   main.innerHTML =
     `<div class="crumbs"><a href="#/">Overview</a>${path.slice(0, -1).map(p => ` › <a href="#/g/${p.id}">${esc(p.name)}</a>`).join('')}</div>` +
-    `<h1>${esc(g.name)}</h1><div class="muted small">${g._all.length} targets${kids(gid).length ? ` · ${kids(gid).length} subgroups` : ''} · ${RANGES[S.range].toLowerCase()}</div>` +
+    `<h1>${esc(g.name)}</h1><div class="muted small gsub">${g._all.length} targets${kids(gid).length ? ` · ${kids(gid).length} subgroups` : ''} · ${RANGES[S.range].toLowerCase()}</div>` +
     (kids(gid).length ? `<div class="subs">${kids(gid).map(c => `<a class="chip" href="#/g/${c.id}"><span class="dot ${worst(c._all.flatMap(t => t.series.map(status)))}"></span>${esc(c.name)} <span class="faint">${c._all.length}</span></a>`).join('')}</div>` : '') +
     '<div id="secs"></div><div class="legend" style="margin-top:8px">' + PS.legendHTML() + '</div>';
   const box = $('#secs');
@@ -296,6 +296,15 @@ function targetRow(t){
   }
   const grid = document.createElement('div'); grid.className = 'charts' + (fams.length === 1 ? ' single' : '');
   for (const f of fams) grid.appendChild(famBox(t, f, S.range, false));
+  if (fams.length === 1){  // one graph: put its IPv4/IPv6 label and current value in the title row, saving a line
+    const lab = grid.querySelector('.clabel'), head = el.querySelector('.thead');
+    if (lab && head){
+      const fam = lab.querySelector('.badge'); fam?.classList.add('fam');
+      if (fam) head.querySelector('.tname').after(fam);
+      for (const x of [...lab.children]) head.appendChild(x);
+      lab.remove();
+    }
+  }
   el.appendChild(grid);
   return el;
 }
@@ -532,6 +541,7 @@ $('#search').addEventListener('input', e => {
 });
 addEventListener('keydown', e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT'){ e.preventDefault(); $('#search').focus(); } });
 
+PS.schemeSwitch($('#scheme'));
 refresh(true);
 setInterval(refresh, 30000);
 })();

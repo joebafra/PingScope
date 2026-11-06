@@ -110,7 +110,8 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **History**: active and resolved alerts per day for the last 24 hours, 7, 30 or 90 days, with duration, worst loss and totals.
 - **Nested groups** in the menu, each with a status dot and target count; group pages show small graphs for every target in the group and its subgroups.
 - **Search** (press <kbd>/</kbd>), an **IPv4 / IPv6 / both** filter and the period buttons in the header. Your choices are remembered in the browser.
-- **Two styles:** *Modern* (default, follows light/dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
+- **Light, dark or system:** a switch in the header lets every visitor pick light, dark or "follow the system"; the choice is remembered in their browser and also applies to the admin panel.
+- **Two styles:** *Modern* (default, with light and dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
 - **Your own branding:** site title and welcome text.
 - Works on phones: the menu becomes a drawer and tables collapse.
 
