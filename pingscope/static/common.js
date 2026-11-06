@@ -172,10 +172,9 @@ const PS = (() => {
       c.fillStyle = `rgba(${smoke},${Math.min(.35, .9 / Math.ceil(k / 2))})`;
       for (let i = 0; i < Math.floor(k / 2); i++){ const y1 = Y(q[k - 1 - i]), y2 = Y(q[i]); c.fillRect(x, y1, bw, Math.max(1, y2 - y1)); }
     }
-    // 2) median line on top, coloured by packet loss. Like SmokePing it is one continuous step line: level across
-    //    each bucket, then a vertical step to the next bucket. Missing measurements stay a gap. In light mode a thin
-    //    dark edge under the line keeps it visible on the smoke.
-    const lw = H >= 160 ? 3 : 2.5, dark = isDark();
+    // 2) median line on top, coloured by packet loss. Like SmokePing it is one thin, continuous step line: level
+    //    across each bucket, then a vertical step to the next bucket. Missing measurements stay a gap.
+    const lw = 1.5;
     const runs = [];  // stretches of consecutive buckets with a median
     for (const p of d.points){
       if (!p.sent || !p.q.length) continue;
@@ -184,14 +183,6 @@ const PS = (() => {
       if (prev && m.t - prev.t <= d.step * 1.5) run.push(m); else runs.push([m]);
     }
     c.lineJoin = 'miter'; c.lineCap = 'square';
-    if (!dark){
-      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = lw + 1.5;
-      for (const run of runs){
-        c.beginPath();
-        run.forEach((m, i) => { if (i) c.lineTo(m.x, m.y); else c.moveTo(m.x, m.y); c.lineTo(m.x + bw, m.y); });
-        c.stroke();
-      }
-    }
     c.lineWidth = lw;
     for (const run of runs){
       for (let i = 0; i < run.length;){  // one stroke per stretch of the same colour, starting at the previous step
@@ -300,12 +291,6 @@ const PS = (() => {
     const r = document.documentElement;
     if (v === 'light' || v === 'dark') r.dataset.scheme = v; else delete r.dataset.scheme;
     requestAnimationFrame(() => $$('canvas.chart').forEach(c => draw(c)));
-  }
-  function isDark(){
-    const r = document.documentElement;
-    if (r.dataset.theme === 'classic') return false;  // the Classic style is always light
-    if (r.dataset.scheme) return r.dataset.scheme === 'dark';
-    return matchMedia('(prefers-color-scheme: dark)').matches;
   }
   function schemeSwitch(el){
     if (!el) return;
