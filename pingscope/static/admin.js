@@ -752,7 +752,7 @@ async function renderContacts(){
       <td><input type="checkbox" class="cd" ${c.is_default ? 'checked' : ''} style="width:auto"></td>
       <td class="acts"><button class="btn sm" data-ct="test">Test</button> <button class="btn sm danger" data-ct="del">Delete</button></td></tr>`).join('')}</tbody></table></div>`
     : '<p class="muted small" style="margin:0 0 8px">No contacts yet. Use <b>Find chat IDs</b> above and click <b>Save as contact</b>, or add one here.</p>') +
-    `<form id="cform" class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px"><input name="label" placeholder="Name, e.g. Joeri or Klant Groningen" required style="flex:2;min-width:160px">
+    `<form id="cform" class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px"><input name="label" placeholder="Name, e.g. NOC on-call or Customer Groningen" required style="flex:2;min-width:160px">
       <input name="chat_id" placeholder="Chat ID" required style="flex:1;min-width:120px" spellcheck="false">
       <label class="check" style="margin:0"><input type="checkbox" name="is_default"> <span>Gets all alerts</span></label><button class="btn">Add contact</button></form>`;
   const save = async tr => {
