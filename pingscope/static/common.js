@@ -172,9 +172,9 @@ const PS = (() => {
       c.fillStyle = `rgba(${smoke},${Math.min(.35, .9 / Math.ceil(k / 2))})`;
       for (let i = 0; i < Math.floor(k / 2); i++){ const y1 = Y(q[k - 1 - i]), y2 = Y(q[i]); c.fillRect(x, y1, bw, Math.max(1, y2 - y1)); }
     }
-    // 2) median line on top, coloured by packet loss. Like SmokePing it is one thin, continuous step line: level
-    //    across each bucket, then a vertical step to the next bucket. Missing measurements stay a gap.
-    const lw = 1.5;
+    // 2) median line on top, like SmokePing: a level across each bucket in the packet-loss colour, joined to the
+    //    next bucket by a thin grey vertical step. Missing measurements stay a gap.
+    const lw = 2;
     const runs = [];  // stretches of consecutive buckets with a median
     for (const p of d.points){
       if (!p.sent || !p.q.length) continue;
@@ -182,20 +182,25 @@ const PS = (() => {
       const run = runs[runs.length - 1], prev = run && run[run.length - 1];
       if (prev && m.t - prev.t <= d.step * 1.5) run.push(m); else runs.push([m]);
     }
-    c.lineJoin = 'miter'; c.lineCap = 'square';
-    c.lineWidth = lw;
-    for (const run of runs){
-      for (let i = 0; i < run.length;){  // one stroke per stretch of the same colour, starting at the previous step
-        const col = run[i].col;
-        c.beginPath();
-        if (i){ c.moveTo(run[i - 1].x + bw, run[i - 1].y); c.lineTo(run[i].x, run[i].y); } else c.moveTo(run[i].x, run[i].y);
-        let j = i;
-        for (; j < run.length && run[j].col === col; j++){ if (j > i) c.lineTo(run[j].x, run[j].y); c.lineTo(run[j].x + bw, run[j].y); }
-        c.strokeStyle = col; c.stroke();
-        i = j;
-      }
+    // a) the steps: 1px grey, snapped to whole device pixels so they stay crisp
+    const crisp = x => (Math.round(x * dpr - dpr / 2) + dpr / 2) / dpr;
+    c.lineCap = 'butt'; c.lineWidth = 1; c.strokeStyle = v('--muted');
+    c.beginPath();
+    for (const run of runs) for (let i = 1; i < run.length; i++){
+      if (Math.abs(run[i].y - run[i - 1].y) < 0.5) continue;
+      const x = crisp(run[i].x);
+      c.moveTo(x, run[i - 1].y); c.lineTo(x, run[i].y);
     }
-    c.lineCap = 'butt';
+    c.stroke();
+    // b) the levels on top, one path per loss colour
+    c.lineWidth = lw;
+    const byCol = new Map();
+    for (const run of runs) for (const m of run){ if (!byCol.has(m.col)) byCol.set(m.col, []); byCol.get(m.col).push(m); }
+    for (const [col, ms] of byCol){
+      c.beginPath();
+      for (const m of ms){ c.moveTo(m.x, m.y); c.lineTo(m.x + Math.max(bw, 1), m.y); }
+      c.strokeStyle = col; c.stroke();
+    }
   }
 
   function chartStats(d){
