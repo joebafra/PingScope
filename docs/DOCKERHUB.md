@@ -62,6 +62,25 @@ Without HTTPS the login and password go over the network unencrypted, so use pla
 
 **For HTTPS**, put PingScope behind a reverse proxy (Caddy, nginx, Traefik) and set `PINGSCOPE_LISTEN=127.0.0.1`. The installer in the GitHub repository sets up PingScope with Caddy and a Let's Encrypt certificate in one go: see the [install guide](https://github.com/joebafra/PingScope/blob/main/docs/INSTALL.md).
 
+## Updating
+
+Every change on GitHub is built automatically and published here as a new `latest` within a few minutes. A running container doesn't update itself: fetch the new image and recreate the container. Your data in `/data` is kept, and the database is upgraded automatically on start.
+
+With Docker Compose:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+With `docker run`:
+
+```bash
+docker pull joebafra/pingscope:latest
+docker rm -f pingscope
+```
+
+Then run the same `docker run` command as in the quick start. To update automatically, use a tool that watches for new images, such as Watchtower. For a copy of the database first: `docker exec pingscope python -m pingscope backup /data/backup.db`.
+
 ## Tags
 
 | Tag | What it is |

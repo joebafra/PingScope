@@ -207,6 +207,8 @@ Then open `http://<server-ip>:8080/admin`: plain HTTP by IP address works out of
 
 Host networking lets PingScope measure with the machine's own IPv4 and IPv6 (this needs a Linux Docker host), and `NET_RAW` is needed for ping and mtr. Tags: `latest` (newest on `main`), a version such as `1.0.0-beta` for each release, and `sha-<commit>`. More on the [Docker Hub page](https://hub.docker.com/r/joebafra/pingscope).
 
+To update, fetch the new image and recreate the container (`docker compose pull && docker compose up -d`, or `docker pull joebafra/pingscope:latest`, `docker rm -f pingscope` and the same `docker run` again). Your data in the volume is kept. Every change on GitHub is published as a new `latest` within a few minutes.
+
 To build the image yourself instead:
 
 ```bash
