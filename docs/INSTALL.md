@@ -5,9 +5,10 @@ This guide installs PingScope on a Linux server with its own hostname (for examp
 **Contents**
 
 1. [Requirements](#1-requirements)
-2. [GitHub access with an SSH deploy key](#2-github-access-with-an-ssh-deploy-key)
+2. [Get the code](#2-get-the-code)
 3. [Install with Docker (recommended)](#3-install-with-docker-recommended)
 4. [HTTPS / SSL certificate (Let's Encrypt)](#4-https--ssl-certificate-lets-encrypt)
+   - [Notifications: Telegram and email](#4a-notifications-telegram-and-email)
 5. [Updating, backups and useful commands](#5-updating-backups-and-useful-commands)
 6. [Install without Docker](#6-install-without-docker)
 7. [Using another reverse proxy](#7-using-another-reverse-proxy)
@@ -29,11 +30,28 @@ This guide installs PingScope on a Linux server with its own hostname (for examp
 
 ---
 
-## 2. GitHub access with an SSH deploy key
+## 2. Get the code
 
-The repository is private, so the server needs permission to download it. The cleanest way is a **deploy key**: an SSH key that gives this one server read-only access to this one repository. Do these steps once per server.
+PingScope is public on GitHub, so the server can download it without any keys or passwords:
 
-### 2.1 Create the key on the server
+```bash
+sudo apt update && sudo apt install -y git
+sudo git clone https://github.com/joebafra/PingScope.git /opt/pingscope
+```
+
+Later updates (`git pull`, `deploy.sh` and the automatic updates in [section 5](#automatic-updates-deploy-from-github)) use the same address and need no login either.
+
+> **Already installed from an SSH clone?** Switch the server to the public address once, and you can remove the deploy key afterwards:
+>
+> ```bash
+> cd /opt/pingscope && sudo git remote set-url origin https://github.com/joebafra/PingScope.git
+> ```
+
+### 2.1 Optional: a private fork with an SSH deploy key
+
+Only needed if you run PingScope from **your own private copy** of the repository (for example with local changes). The server then needs permission to download it. The cleanest way is a **deploy key**: an SSH key that gives this one server read-only access to this one repository. In the steps below, replace `<you>/PingScope` with your fork.
+
+#### Create the key on the server
 
 ```bash
 sudo apt update && sudo apt install -y git openssh-client
@@ -48,7 +66,7 @@ This creates two files:
 | `/root/.ssh/pingscope_deploy` | The **private** key. It stays on the server; never share it. |
 | `/root/.ssh/pingscope_deploy.pub` | The **public** key. This one goes to GitHub. |
 
-### 2.2 Tell SSH to use this key for GitHub
+#### Tell SSH to use this key for GitHub
 
 Open the SSH config file:
 
@@ -72,21 +90,21 @@ Then set the permissions:
 sudo chmod 600 /root/.ssh/config
 ```
 
-### 2.3 Add the public key to the repository on GitHub
+#### Add the public key to your fork on GitHub
 
 1. Show the public key:
    ```bash
    sudo cat /root/.ssh/pingscope_deploy.pub
    ```
    Copy the whole line. It starts with `ssh-ed25519` and ends with `pingscope@<servername>`.
-2. Open **https://github.com/internetcreators/PingScope/settings/keys**. On GitHub that is: repository → **Settings** → **Deploy keys** → **Add deploy key**.
+2. On GitHub, open your fork → **Settings** → **Deploy keys** → **Add deploy key**.
 3. Fill in:
    - **Title:** a name for the server, for example `pingscope-server-ams`.
    - **Key:** paste the line.
    - **Allow write access:** leave **unchecked**. The server only needs to read.
 4. Click **Add key**.
 
-### 2.4 Test the connection
+#### Test the connection
 
 ```bash
 sudo ssh -T git@github.com
@@ -95,7 +113,7 @@ sudo ssh -T git@github.com
 The first time, SSH asks whether you trust github.com. Answer **yes**. You should then see:
 
 ```
-Hi internetcreators/PingScope! You've successfully authenticated, but GitHub does not provide shell access.
+Hi <you>/PingScope! You've successfully authenticated, but GitHub does not provide shell access.
 ```
 
 If you see `Permission denied (publickey)`:
@@ -103,21 +121,21 @@ If you see `Permission denied (publickey)`:
 - Check that you pasted the `.pub` file on GitHub.
 - Check that `/root/.ssh/config` points to `/root/.ssh/pingscope_deploy`.
 
-### 2.5 Clone the repository
+#### Clone your fork
 
 ```bash
-sudo git clone git@github.com:internetcreators/PingScope.git /opt/pingscope
+sudo git clone git@github.com:<you>/PingScope.git /opt/pingscope
 ```
 
 Later updates with `git pull` use the same key automatically.
 
 > **Alternative: a personal access token over HTTPS**
 >
-> 1. Create a fine-grained token under GitHub → your profile → **Settings → Developer settings → Personal access tokens**, with **Contents: Read-only** for `internetcreators/PingScope`.
-> 2. Run `sudo git clone https://github.com/internetcreators/PingScope.git /opt/pingscope`.
+> 1. Create a fine-grained token under GitHub → your profile → **Settings → Developer settings → Personal access tokens**, with **Contents: Read-only** for your fork.
+> 2. Run `sudo git clone https://github.com/<you>/PingScope.git /opt/pingscope`.
 > 3. Enter your GitHub username as the username and the token as the password.
 >
-> Tokens expire, so a deploy key is easier for servers.
+> Tokens expire, and the automatic updates can't type a password, so a deploy key is easier for servers.
 
 ---
 
@@ -285,7 +303,7 @@ PingScope can alert you when targets have packet loss or are down, by **Telegram
 
 ### Email (Lettermint)
 
-1. **In Lettermint:** add and verify your sending domain (for example `joebafra.nl`), then create a **Project API token** in the project settings.
+1. **In Lettermint:** add and verify your sending domain (for example `example.nl`), then create a **Project API token** in the project settings.
 2. **In PingScope → Admin → Settings → Notifications:**
    - *Send emails from*: e.g. `PingScope <noreply@yourdomain.nl>` (the domain must be verified in Lettermint)
    - *Send emails to*: one or more addresses, separated by commas
@@ -321,7 +339,7 @@ A systemd timer runs `deploy.sh` every 5 minutes. The script:
 
 Your settings (`.env`) and data (`data/`) are never touched by git.
 
-Requirement: the server reads the repository with a deploy key ([section 2](#2-github-access-with-an-ssh-deploy-key)), because the timer can't type a password.
+The public repository needs no login. For a private fork, the server must read it with a deploy key ([section 2.1](#21-optional-a-private-fork-with-an-ssh-deploy-key)), because the timer can't type a password.
 
 ```bash
 sudo ./deploy.sh --status                         # running version vs. available version
@@ -392,7 +410,7 @@ sudo docker exec -it pingscope python -m pingscope create-admin   # extra admin 
 
 ## 6. Install without Docker
 
-These steps are for Ubuntu or Debian. Set up GitHub access first ([section 2](#2-github-access-with-an-ssh-deploy-key)).
+These steps are for Ubuntu or Debian.
 
 ### 6.1 Packages, user and code
 
@@ -400,7 +418,7 @@ These steps are for Ubuntu or Debian. Set up GitHub access first ([section 2](#2
 sudo apt update
 sudo apt install -y git python3 python3-venv fping mtr-tiny
 sudo useradd --system --home /var/lib/pingscope --create-home --shell /usr/sbin/nologin pingscope
-sudo git clone git@github.com:internetcreators/PingScope.git /opt/pingscope
+sudo git clone https://github.com/joebafra/PingScope.git /opt/pingscope
 cd /opt/pingscope
 sudo python3 -m venv venv
 sudo venv/bin/pip install -r requirements.txt
@@ -485,7 +503,7 @@ Certificates are then handled by that web server (for example with certbot). If 
 |---|---|
 | Browser warning / no certificate | **Admin → Settings → HTTPS** and `sudo docker logs pingscope-caddy`. Usually the DNS record doesn't point to the server yet, or port 80 is blocked (also check the hosting provider's firewall). |
 | "too many certificates already issued" | Let's Encrypt rate limit: wait a few days, or use staging while testing ([4.5](#45-experimenting-use-lets-encrypt-staging-optional)). |
-| `git clone`: Permission denied (publickey) | The deploy key isn't added on GitHub, or `/root/.ssh/config` doesn't point to it. Test with `sudo ssh -T git@github.com`. |
+| `git clone`: Permission denied (publickey) | Only for a private fork over SSH: the deploy key isn't added on GitHub, or `/root/.ssh/config` doesn't point to it. Test with `sudo ssh -T git@github.com`. For the public repository, clone over HTTPS: `https://github.com/joebafra/PingScope.git`. |
 | A new version on GitHub isn't installed | `sudo ./deploy.sh --status` and `sudo journalctl -u pingscope-deploy -n 50`. If that version failed before, it is skipped until a newer commit (or run `sudo ./deploy.sh --force`). |
 | All IPv6 graphs are down | Does the server have IPv6? `ping -6 2001:4860:4860::8888` |
 | Ping targets all down, DNS targets fine | The container needs `NET_RAW` (already in docker-compose.yml). Check `sudo docker logs pingscope`. |

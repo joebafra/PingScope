@@ -100,7 +100,8 @@ if [[ "${a:-Y}" =~ ^[Yy]$ ]]; then
     ok "Automatic updates enabled (log: journalctl -u pingscope-deploy)"
   else
     warn "This server can't read the GitHub repository without a password prompt."
-    warn "Set up an SSH deploy key first (docs/INSTALL.md, section 2), then run ./install.sh again."
+    warn "Clone the public repository over HTTPS (https://github.com/joebafra/PingScope.git), or set up"
+    warn "an SSH deploy key for a private fork (docs/INSTALL.md, section 2.1), then run ./install.sh again."
   fi
 fi
 

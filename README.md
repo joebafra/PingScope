@@ -1,140 +1,441 @@
-# PingScope
+<p align="center">
+  <img src="docs/logo.svg" width="72" height="72" alt="PingScope logo">
+</p>
 
-Latency and packet-loss monitoring for **IPv4 and IPv6**, in the spirit of SmokePing, with a web-based admin panel.
+<h1 align="center">PingScope</h1>
 
-- **Probes:** ping (fping), DNS query time and TCP connect time. Each probe type is a small plugin.
-- **IPv4 and IPv6 side by side:**
-  - Hostnames are resolved for A and AAAA records.
-  - An IPv4 target can be given an extra IPv6 address.
-  - The overview shows how many targets are measured over IPv6.
-- **SmokePing-style graphs:**
-  - Grey "smoke" shows the spread of all probes.
-  - The median line changes colour with packet loss.
-  - Ranges: 3 hours, day, week, month, year.
-- **Interactive graphs:** a crosshair follows the mouse on all graphs at once (same moment on IPv4 and IPv6), and you can drag across a graph to zoom in on that period; double-click or *Reset zoom* to go back.
-- **mtr traceroutes:**
-  - Every 15 minutes normally, every minute while a target has packet loss or is down.
-  - Click a time, or a point in a graph, to open the hop-by-hop report.
-- **Admin panel:**
-  - Nested groups and targets, bulk actions, drag to move.
-  - "Test now" for a target, IPv6 suggestions.
-  - SmokePing import, JSON export/import.
-  - Settings and users.
-- **Private by default for visitors:**
-  - The public dashboard never shows hostnames, IP addresses or DNS query names.
-  - Traceroute hops are hidden from visitors unless you enable them.
-  - Logged-in admins see everything.
-- **Your own branding:** site title and welcome text are set in **Admin → Settings**.
-- **Alerts by Telegram and email:** per group a packet-loss threshold and/or an alert when a target is down, sent to Telegram and/or email (via [Lettermint](https://lettermint.co)). Targets can have their own Telegram chat IDs, so a customer gets alerts about their own connection. Problems in the same round are combined into one message. See [Notifications](docs/INSTALL.md#4a-notifications-telegram-and-email).
-- **Two user roles:** *Admin* (full access) and *Viewer* (view-only: sees the dashboard with hostnames, IP addresses, traceroute hops and hidden groups, but can't change anything). Manage them under **Admin → Users**.
-- **Two dashboard styles:** *Modern* (default, follows light/dark mode) or *Classic*, a SmokePing-style look with a dark menu, framed graphs and the familiar median rtt / packet loss legend under every graph. Switch any time under **Admin → Settings → Dashboard style**.
-- **HTTPS out of the box:**
-  - Caddy gets a Let's Encrypt certificate for your own hostname.
-  - It redirects HTTP to HTTPS and renews the certificate automatically.
+<p align="center">
+  <b>Latency and packet-loss monitoring for IPv4 and IPv6, in the spirit of SmokePing, with a modern web admin panel.</b>
+</p>
 
-## Install
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB.svg?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688.svg?logo=fastapi&logoColor=white">
+  <img alt="Docker Compose" src="https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker&logoColor=white">
+  <img alt="IPv4 and IPv6" src="https://img.shields.io/badge/IPv4%20%2B%20IPv6-side%20by%20side-16a34a.svg">
+</p>
 
-1. [Create an SSH deploy key](docs/INSTALL.md#2-github-access-with-an-ssh-deploy-key) on the server so it can read this private repository.
-2. Clone and run the installer:
-   ```bash
-   sudo git clone git@github.com:internetcreators/PingScope.git /opt/pingscope
-   cd /opt/pingscope
-   sudo ./install.sh
-   ```
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="docs/INSTALL.md">Install guide</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#api">API</a>
+</p>
 
-The installer asks for your hostname and email. It sets up Docker, the **Let's Encrypt SSL certificate** (with HTTP→HTTPS redirect) and the firewall, and prints a one-time setup code for the first admin account.
+![PingScope overview: every target with its current IPv4 and IPv6 latency and packet loss](docs/screenshots/overview.png)
 
-- Full guide: **[docs/INSTALL.md](docs/INSTALL.md)**.
-- How SSL works and how to change the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**.
-- Certificate status: **Admin → Settings → HTTPS / SSL certificate**.
-- **Automatic deploy:** the server checks GitHub every 5 minutes. A new version on `main` is installed with a database backup first, and rolled back automatically if it doesn't start. See [Automatic updates](docs/INSTALL.md#automatic-updates-deploy-from-github).
+PingScope measures round-trip time and packet loss to your routers, customers, DNS servers and websites every minute, over **IPv4 and IPv6 side by side**. It draws SmokePing-style "smoke" graphs, runs **mtr traceroutes** automatically when something goes wrong, and sends **alerts by Telegram and email**. Everything is configured in a web admin panel: no config files to edit, no restarts.
 
-## Built with
+It is a single small Python service with a SQLite database. Install it on a Linux server with one script, and it gets its own **Let's Encrypt HTTPS certificate** and **automatic updates** from GitHub.
+
+## Contents
+
+- [Why PingScope](#why-pingscope)
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [How it works](#how-it-works)
+- [API](#api)
+- [Command line](#command-line)
+- [Adding a probe type](#adding-a-probe-type)
+- [Security and privacy](#security-and-privacy)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why PingScope
+
+[SmokePing](https://oss.oetiker.ch/smokeping/) is the classic tool for this job, and its graphs are excellent. PingScope keeps what makes SmokePing useful and adds what people usually build around it:
+
+| | SmokePing | PingScope |
+|---|---|---|
+| Graphs | RRD "smoke" graphs rendered on the server | The same smoke and loss colours, drawn in the browser: hover crosshair, drag to zoom |
+| IPv6 | A separate target per family (`FPing6`) | One target, IPv4 and IPv6 graphs next to each other; A/AAAA lookups and IPv6 suggestions |
+| Configuration | Text config file, reload to apply | Web admin panel; changes apply within a round |
+| Traceroutes | Not included | mtr every 15 minutes, every minute during problems, linked from the graphs |
+| Alerts | Pattern-based alerts by mail or script | Telegram and email per group, with a preview of how many alerts you would get |
+| Visitors | One view for everyone | Public dashboard without hostnames or IP addresses; hidden groups; Admin and Viewer accounts |
+| Migration | | Imports your SmokePing `Targets` file |
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Target page with IPv4 and IPv6 graphs](docs/screenshots/target.png) **Target page:** IPv4 and IPv6 graphs side by side for every period, with median, min, max, jitter and loss. | ![Drag-to-zoom with the synced crosshair](docs/screenshots/zoom.png) **Zoom and crosshair:** drag across a graph to zoom in; the crosshair follows the same moment on every graph. |
+| ![Group page in dark mode](docs/screenshots/group-dark.png) **Group page, dark mode:** follows the visitor's light/dark preference. | ![Classic SmokePing-style theme](docs/screenshots/classic.png) **Classic style:** a SmokePing look with framed graphs and the familiar legend. |
+| ![mtr traceroute history](docs/screenshots/mtr.png) **Traceroutes:** hop-by-hop mtr reports, labelled with why they ran. | ![Alert history on the dashboard](docs/screenshots/history.png) **Alert history:** active and resolved alerts per day, with duration and worst loss. |
+| ![Admin panel targets list](docs/screenshots/admin-targets.png) **Admin panel:** nested groups, live status, bulk actions, an "Offline" list for cleanup. | ![Group notification settings with alert preview](docs/screenshots/admin-group.png) **Alert preview:** see how many alerts a threshold would have given over the last days, before you switch it on. |
+| ![Admin alerts tab with Telegram contacts](docs/screenshots/admin-alerts.png) **Alerts tab:** channel status, test alerts, Telegram contacts and active alerts. | |
+
+<sub>Screenshots use demo data with documentation addresses (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 2001:db8::/32).</sub>
+
+## Features
+
+### Measurements
+
+- **Three probe types**, each a small plugin:
+  - **Ping (ICMP)** with [fping](https://fping.org/): round-trip time and packet loss. All targets of a round are pinged in parallel by one fping process per address family, so hundreds of targets cost very little.
+  - **DNS query**: response time of a DNS server for a query (UDP). Choose the query name and record type (A, AAAA, NS, SOA, MX, TXT, CNAME, PTR). Any valid answer counts, including NXDOMAIN.
+  - **TCP connect**: time to open a TCP connection to a port (443 by default). Useful for hosts that block ICMP, or to watch a web or mail server.
+- **Every minute by default**, with 20 pings (or 10 DNS queries / TCP connects) per target per round, spaced one second apart. Interval, counts, spacing and timeout are settings; a target can override its own probe count.
+- **Honest data:** when a probe can't run locally (fping missing, no IPv6 on the server, out of processes), the round is left as a gap instead of being recorded as 100% packet loss, and the error is shown in the admin panel.
+- **"Test now"** in the target dialog runs the probe immediately and shows the result, before you save.
+
+### IPv4 and IPv6 side by side
+
+- A target is measured over **IPv4 and IPv6 at the same time**, and both graphs are shown next to each other. Per target you choose *IPv4 + IPv6*, *IPv4 only* or *IPv6 only*.
+- **Hostnames** are resolved for A and AAAA records, and looked up again every 5 minutes. If a hostname stops resolving, its graph stays visible (marked unresolved) instead of silently disappearing.
+- An IPv4 target can be given an **extra IPv6 address** for the same service. **Find AAAA** in the target dialog suggests one.
+- **Admin → IPv6** lists every target that is still IPv4-only, looks up AAAA records for its hostname (and hostnames in its name, like `ns1.example.nl`), and lets you apply the suggestions you trust in one go.
+- The overview shows your **IPv6 coverage**: how many targets are measured over IPv6.
+
+### SmokePing-style graphs
+
+- **Grey "smoke"** shows the spread of all probes in a round; the **median line** changes colour with packet loss, using the SmokePing loss colours (0%, ≤5%, ≤10%, ≤25%, ≤50%, >50%, 100%).
+- **Periods:** last 3 hours, day, week, month and year. On a target page the period you picked comes first, the others follow below it.
+- **Synced crosshair:** hover over a graph and a dashed line shows the same moment on every visible graph (IPv4 and IPv6 together), with a tooltip: median, min, max and loss of that round.
+- **Drag to zoom:** drag across a graph to zoom all graphs of that period into the selected time. Double-click or *Reset zoom* to go back. Zoomed graphs use full-resolution data where available.
+- **Click a point** in a graph to open the traceroute closest to that moment.
+- **A tight Y axis:** the top follows the bulk of the pings instead of the single highest spike, and a steady 8 ms line doesn't start at 0, so graphs aren't mostly empty space.
+- Under every graph: **average median, min, max, jitter and loss** for that period.
+
+### Dashboard
+
+- **Overview** of all targets with the current latency and loss per family, sortable by group order, worst first or name, plus tiles with totals: healthy, with packet loss, down, IPv6 coverage.
+- **Problems**: only the targets with packet loss or no replies in the last round.
+- **History**: active and resolved alerts per day for the last 24 hours, 7, 30 or 90 days, with duration, worst loss and totals.
+- **Nested groups** in the menu, each with a status dot and target count; group pages show small graphs for every target in the group and its subgroups.
+- **Search** (press <kbd>/</kbd>), an **IPv4 / IPv6 / both** filter and the period buttons in the header. Your choices are remembered in the browser.
+- **Two styles:** *Modern* (default, follows light/dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
+- **Your own branding:** site title and welcome text.
+- Works on phones: the menu becomes a drawer and tables collapse.
+
+### Traceroutes (mtr)
+
+- [mtr](https://github.com/traviscross/mtr) runs per network path (address family + address) **every 15 minutes**, and **every minute while a target has packet loss or is down**, so you have the path at the moment of the problem.
+- Each report is labelled with **why it ran** (*scheduled*, *loss 5%*, *down*) and shows what the traceroute itself measured: loss at the destination, hop count, latency.
+- Hop-by-hop table with loss, sent, last, average, best, worst and standard deviation per hop.
+- Filter on **problems only**, load older reports, or click a point in a graph to jump to the nearest report.
+- A limit on parallel mtr processes keeps the server responsive during a large outage. History is kept for 30 days.
+
+### Alerts: Telegram and email
+
+- Notifications are set **per group** (subgroups can follow their parent): alert at a **packet-loss threshold** (for example 10% or more), when a target is **down** (no replies at all), or both.
+- Delivery by **Telegram** (your own bot) and/or **email** via [Lettermint](https://lettermint.co). Either can be switched on per group.
+- **No alert storms:** a problem must last *N* rounds in a row before an alert starts (default 3), and *N* good rounds before it counts as resolved. *N* can be set per group and overridden per target (1 for a critical link, 5 for a flaky one).
+- Everything that starts, gets worse or ends in the **same round goes out in one message**, so a large outage sends one message instead of hundreds.
+- Optional **"resolved"** messages and **reminders** every *X* hours while a problem lasts.
+- **Alerts for customers:** save Telegram chats as named **contacts**, then pick them on a target or a whole group ("Also send alerts for this target to"). Those chats only get messages about their own targets, without your group names.
+- **Preview before you switch it on:** the group dialog replays the stored measurements and shows how many targets would have alerted over the last 24 hours, 7 or 14 days, how many alerts and roughly how many messages per day, with a **Skip** button per target.
+- **Skip single targets** that should never alert (🔕), from the target dialog, the preview or as a bulk action.
+- **Test alerts** that look exactly like real ones (marked TEST), to all admin channels, to one contact, or to the chats picked on a target.
+- **Find chat IDs** lists the chats that recently wrote to your bot, so you don't have to look IDs up.
+- Active alerts and 90 days of history are listed in **Admin → Alerts**; visitors see the history on the dashboard.
+
+### Admin panel
+
+- **Targets:** nested groups and subgroups, drag targets onto a group to move them, ↑ ↓ ordering or automatic A → Z (natural) sorting per group, bulk actions (move, enable, disable, alerts on/off, delete), search over names, addresses, query names and notes.
+- **Offline** list: targets that got no reply at all, or whose hostname no longer resolves, with how long they have been offline and a filter (offline for at least 1 hour / 1 day / 7 / 30 days). Handy for cleaning up old customer connections.
+- **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe count, mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
+- **Groups** can be **hidden from visitors**: the group, its subgroups and their targets only exist for logged-in users.
+- **Import & export:** SmokePing import with preview, JSON export and import of groups, targets and settings.
+- **Settings** apply without a restart, with warnings for combinations that don't fit (for example rounds that would overlap). A status card shows the last round and whether fping and mtr are installed, and an **HTTPS / SSL** card shows per hostname who issued the certificate, when it expires and whether HTTP redirects to HTTPS.
+- **Users** with two roles: **Admin** (full access) and **Viewer** (view-only: sees the dashboard with hostnames, IP addresses, traceroute hops and hidden groups, but can't change anything). Every user can change their own password.
+
+### Import from SmokePing
+
+Paste your SmokePing `Targets` section (or a whole config file, or upload it) in **Admin → Import & export**, click **Preview**, then **Import**:
+
+- Nested groups (`+`, `++`, `+++`) become groups and subgroups, using `title` as the name.
+- `probe` is inherited like in SmokePing: `FPing` → ping, `FPing6` → ping over IPv6 only, `DNS` → DNS (with `lookup` and `server`), `TCPPing` → TCP.
+- The known IPv6 addresses of the **root servers and large public resolvers** (Google, Cloudflare, Quad9, OpenDNS, NextDNS) are added automatically, so they're measured over IPv6 right away.
+- The preview shows the resulting tree and points out outdated addresses and duplicate targets.
+- *Add to existing* reuses groups with the same name and skips identical targets; *Replace everything* starts fresh.
+
+Afterwards, **Admin → IPv6** finds AAAA records for the targets that are still IPv4-only. An example config is in [`examples/smokeping-example.txt`](examples/smokeping-example.txt).
+
+### Deployment
+
+- **One installer** (`install.sh`) for Ubuntu and Debian: installs Docker, asks for your hostname and email, checks DNS and IPv6, opens the firewall, starts everything and prints a one-time setup code for the first admin.
+- **HTTPS out of the box:** [Caddy](https://caddyserver.com/) gets a Let's Encrypt certificate for your hostname, renews it, redirects HTTP to HTTPS and sends HSTS.
+- **Automatic updates:** a systemd timer checks GitHub every 5 minutes. A new version is installed with a **database backup first**, a health check afterwards, and an **automatic rollback** if it doesn't start.
+- Runs with **Docker Compose** (recommended) or as a plain **systemd** service, behind Caddy, nginx, Apache or any other reverse proxy.
+- Small: 1 vCPU and 1 GB RAM is plenty for a few hundred targets.
+
+## Quick start
+
+You need a Linux server (Ubuntu 22.04/24.04 or Debian 12) with a public IPv4 address, ideally IPv6, and a hostname whose A (and AAAA) record points to it. Ports 80 and 443 must be reachable.
+
+```bash
+sudo git clone https://github.com/joebafra/PingScope.git /opt/pingscope
+```
+
+```bash
+cd /opt/pingscope && sudo ./install.sh
+```
+
+The installer asks for your hostname and email, sets up Docker, the **Let's Encrypt certificate** (with HTTP→HTTPS redirect), the firewall and automatic updates, and prints a **setup code**. Open `https://<your-hostname>/admin`, enter the code and create your admin account. Then add targets, or import your SmokePing config.
+
+- Full guide, including installing without Docker and using another reverse proxy: **[docs/INSTALL.md](docs/INSTALL.md)**
+- HTTPS details and changing the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**
+- Telegram and email: **[Notifications](docs/INSTALL.md#4a-notifications-telegram-and-email)**
+- Updates, backups and useful commands: **[section 5](docs/INSTALL.md#5-updating-backups-and-useful-commands)**
+
+### Try it without a hostname
+
+On any Linux machine with Docker:
+
+```bash
+git clone https://github.com/joebafra/PingScope.git && cd PingScope
+```
+
+```bash
+docker compose up -d --build
+```
+
+```bash
+docker logs pingscope 2>&1 | grep "setup code"
+```
+
+Then open <http://localhost:8080/admin>. Without a `.env` file Caddy isn't started and PingScope listens on `127.0.0.1:8080` only. The container uses host networking (to measure with the machine's own IPv4 and IPv6), which needs a Linux Docker host.
+
+### Run from source
+
+```bash
+sudo apt install -y fping mtr-tiny python3-venv
+```
+
+```bash
+python3 -m venv venv && venv/bin/pip install -r requirements.txt
+```
+
+```bash
+PINGSCOPE_LISTEN=127.0.0.1 venv/bin/python -m pingscope
+```
+
+The database is created at `data/pingscope.db`; the setup code is printed in the log.
+
+## Configuration
+
+### Settings in the admin panel
+
+Everything about what and how PingScope measures is set in **Admin → Settings** and stored in the database. Changes apply without a restart.
+
+**Site**
+
+| Setting | Default | Range | What it does |
+|---|---|---|---|
+| Site title | `PingScope` | | Shown in the header and browser tab. |
+| Welcome text | | | Shown at the top of the overview page. |
+| Dashboard style | Modern | | *Modern* follows the visitor's light/dark preference; *Classic* is SmokePing-style. |
+| Public dashboard | on | | Allow viewing graphs without logging in. The admin panel always requires a login. |
+| Show traceroute hops to visitors | off | | Show the router addresses along the path in mtr reports. Target hostnames and addresses are never shown to visitors. |
+
+**Measurements**
+
+| Setting | Default | Range | What it does |
+|---|---|---|---|
+| Measurement interval | 60 s | 30–3600 | Every target is measured once per interval. |
+| Pings per round | 20 | 1–100 | ICMP echo requests per target per round. |
+| DNS queries per round | 10 | 1–100 | Queries per DNS target per round. |
+| TCP connects per round | 10 | 1–100 | Connection attempts per TCP target per round. |
+| Spacing between probes | 1000 ms | 100–10000 | Time between two probes to the same target within a round. |
+| Probe timeout | 1500 ms | 100–10000 | A probe without a reply within this time counts as lost. |
+| Hostname re-resolve interval | 300 s | 60–86400 | How often A/AAAA records of hostname targets are looked up again. |
+
+**Storage**
+
+| Setting | Default | Range | What it does |
+|---|---|---|---|
+| Keep per-round data | 14 days | 2–365 | Full-resolution data. Older data is kept as hourly summaries forever. |
+
+**Traceroutes (mtr)**
+
+| Setting | Default | Range | What it does |
+|---|---|---|---|
+| Enable mtr | on | | Run mtr traceroutes alongside the measurements. |
+| Cycles per mtr report | 10 | 1–100 | Pings per hop in each report. |
+| Normal interval | 900 s | 60–86400 | How often mtr runs when everything is fine. |
+| Interval during problems | 60 s | 60–3600 | How often mtr runs while a target has packet loss or is down. |
+| Loss threshold | 0 % | 0–99 | Loss above this counts as a problem. 0 = any lost packet. |
+| Max parallel mtr processes | 16 | 1–128 | Limits load during large outages. |
+| Keep mtr history | 30 days | 1–365 | |
+
+**Notifications**
+
+| Setting | Default | Range | What it does |
+|---|---|---|---|
+| Send emails from | | | Sender, e.g. `PingScope <noreply@example.com>`. The domain must be verified in Lettermint. |
+| Send emails to | | | One or more addresses, comma-separated. |
+| Lettermint API token | | | Stored on the server and never shown again. `LETTERMINT_TOKEN` takes priority. |
+| Telegram bot token | | | From [@BotFather](https://t.me/BotFather). Stored on the server and never shown again. `TELEGRAM_BOT_TOKEN` takes priority. |
+| Telegram chat IDs | | | Default chats for all alerts, comma-separated. Use *Admin → Alerts → Find chat IDs*. |
+| Rounds in a row before alerting | 3 | 1–60 | How long a problem must last before an alert, and how long it must be fine before it's resolved. Groups and targets can override it. |
+| Notify when resolved | on | | Also send a message when a target is fine again. |
+| Reminder while still down | 0 h | 0–168 | Repeat the alert every this many hours while it lasts. 0 = never. |
+
+Per **group** you set notifications (on / off / same as the parent group), the loss threshold, alert when down, Telegram and email switches, rounds in a row, and extra Telegram chats. Per **target** you can skip alerts, override rounds in a row and add extra chats.
+
+### Server settings (`.env`)
+
+`install.sh` writes these to `/opt/pingscope/.env`; see [`.env.example`](.env.example). Apply changes with `docker compose up -d`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PINGSCOPE_DOMAIN` | | Your hostname(s) for HTTPS, comma-separated. Also used for links in alerts and for the HTTPS status card. |
+| `ACME_EMAIL` | | Email for Let's Encrypt expiry notices (optional). |
+| `COMPOSE_PROFILES` | `https` | `https` starts Caddy; empty runs without HTTPS. |
+| `PINGSCOPE_LISTEN` | `127.0.0.1` | Listen address. Use `0.0.0.0` without HTTPS. (`0.0.0.0` when run from source without it set.) |
+| `PINGSCOPE_PORT` | `8080` | Port PingScope listens on. |
+| `PINGSCOPE_TRUSTED_PROXIES` | `127.0.0.1` | Reverse proxies whose `X-Forwarded-*` headers are trusted. |
+| `PINGSCOPE_DB` | `/data/pingscope.db` | Database file (`data/pingscope.db` when run from source). |
+| `TZ` | `Europe/Amsterdam` | Time zone for log lines and alert messages. |
+| `TELEGRAM_BOT_TOKEN` | | Telegram bot token, instead of entering it in the admin panel. |
+| `LETTERMINT_TOKEN` | | Lettermint API token, instead of entering it in the admin panel. |
+
+For `deploy.sh` (set them in the systemd service): `PINGSCOPE_BRANCH` (branch to deploy, default `main`), `PINGSCOPE_KEEP_BACKUPS` (default 5) and `PINGSCOPE_HEALTH_TIMEOUT` (seconds, default 120).
+
+## How it works
+
+```
+                      every interval (60 s)
+ ┌────────────┐    ┌──────────────────────────────┐    ┌────────────────────┐
+ │  Resolver  │──▶ │ Collector                    │──▶ │ SQLite (WAL)       │
+ │ A / AAAA   │    │  ping: fping per family      │    │  samples  (14 days)│
+ └────────────┘    │  dns / tcp: asyncio probes   │    │  hourly   (forever)│
+                   │  → mtr scheduler             │    │  mtr      (30 days)│
+                   │  → alerter → Telegram, email │    │  alerts, config    │
+                   └──────────────────────────────┘    └─────────┬──────────┘
+                                                                 │
+   visitor / admin ──HTTPS──▶ Caddy ──▶ FastAPI (dashboard, admin, JSON API)
+```
+
+- Each target becomes one **series** per address family (`<target id>-4`, `<target id>-6`). Every round, all probe types run in parallel and store every round-trip time of every series.
+- **Full-resolution data** (all probe RTTs per round) is kept for 14 days by default. Older data is **summarised per hour** (20 quantiles plus sent/lost) and kept indefinitely, so a year graph still shows the smoke.
+- The 3-hour, day and week graphs use full-resolution data; month and year use the hourly summaries. Zoomed graphs use full-resolution data when it is still there.
+- **Disk usage** is roughly 2 MB per series per two weeks, plus 1 MB per series per year: 300 series need about 1 GB.
+- The frontend is plain HTML, CSS and JavaScript with canvas graphs: no build step, no framework, no CDN for scripts. Static files are versioned by content hash, so browsers never mix old and new files after an update.
+
+### Built with
 
 | Part | Technology |
 |---|---|
 | Backend | Python 3.12, [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/), asyncio |
-| Storage | SQLite (single file, WAL mode); per-round data plus hourly summaries |
+| Storage | SQLite (single file, WAL mode) |
 | Measurements | [fping](https://fping.org/) for ICMP, built-in async DNS and TCP probes, [mtr](https://github.com/traviscross/mtr) for traceroutes |
-| Frontend | Plain HTML, CSS and JavaScript with canvas graphs; no build step, no external CDN |
+| Frontend | Plain HTML, CSS and JavaScript with canvas graphs |
 | HTTPS | [Caddy](https://caddyserver.com/) with automatic Let's Encrypt certificates |
-| Deployment | Docker Compose (or systemd without Docker) |
+| Alerts | Telegram Bot API, [Lettermint](https://lettermint.co) for email |
+| Deployment | Docker Compose (or systemd without Docker), systemd timer for updates |
 
-## Importing from SmokePing
+The only Python dependencies are `fastapi` and `uvicorn`.
 
-**Admin → Import & export:** paste your `Targets` section (or upload the file), click **Preview**, then **Import**. From the command line:
+### Project layout
+
+```
+pingscope/
+  __main__.py      command line: serve, create-admin, import, export, backup, ping-test
+  web.py           HTTP layer: pages, public API, login, admin API
+  collector.py     measurement loop
+  resolver.py      targets → series per address family (A/AAAA lookups)
+  probes/          probe plugins: ping.py (fping), dns.py, tcp.py
+  mtr.py           traceroute scheduler
+  alerts.py        alert state, group preview, Telegram and email
+  db.py            SQLite storage, hourly roll-up
+  importer.py      SmokePing and JSON import, JSON export
+  settings.py      settings schema (defaults, ranges, help texts)
+  model.py         target validation
+  static/          dashboard and admin panel (HTML, CSS, JS)
+deploy/            Caddyfile, systemd units for the service and auto-deploy
+docs/INSTALL.md    installation guide
+install.sh         interactive installer
+deploy.sh          update with backup, health check and rollback
+```
+
+## API
+
+These endpoints are read-only and return JSON. They are public when the dashboard is public (otherwise they need a login), and visitors get the address-free view: no hostnames, IP addresses, DNS query names, hidden groups or notification settings.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/tree` | Site title, groups, targets with their series and current values, active alert count |
+| `GET /api/series?key=<id>-<4\|6>&range=3h\|1d\|7d\|30d\|1y` | Graph data: per bucket the sent/lost counts and RTT quantiles. Add `start` and `end` (unix seconds) for a custom period, `points` (50–2000) for the resolution. |
+| `GET /api/mtr?key=<id>-<4\|6>` | Traceroute history. Options: `before`, `since`, `at` (closest to a time), `limit`, `only_issues=true`. |
+| `GET /api/history?days=1..90` | Alert history: active and resolved alerts with start, end, kind and loss. |
+
+Example:
+
+```bash
+curl -s "https://ping.example.nl/api/series?key=12-6&range=1d" | jq '.points[-1]'
+```
+
+The admin panel uses a separate API under `/api/admin/…` that needs an admin session and an `X-PingScope: 1` header (CSRF protection).
+
+## Command line
+
+Inside the container, prefix with `docker exec -it pingscope`.
+
+```
+python -m pingscope                                 start the server (same as "serve")
+python -m pingscope create-admin                    create an admin account
+python -m pingscope import FILE [--replace] [--no-known-ipv6] [--site-title]
+                                                    import a SmokePing Targets file or a JSON export
+python -m pingscope export [FILE]                   JSON export of groups, targets and settings
+python -m pingscope backup FILE                     consistent copy of the database (safe while running)
+python -m pingscope ping-test [--family 4|6|both] [--only NAME] [--solo] [--rounds 3] [--count N]
+                                                    diagnostics: run fping exactly like a round
+```
+
+**`ping-test`** runs fping with exactly the same command line as a measurement round and prints which ping of each round was lost, a histogram of lost positions, and a per-ping pattern (`..x.......`) for the targets matching `--only`. It helps to tell systematic loss (always the same ping of a round, for example ICMP rate limiting) from real packet loss. `--solo` pings only the matching targets instead of all at once.
+
+Importing from the shell:
 
 ```bash
 docker exec -i pingscope python -m pingscope import /dev/stdin < Targets
 ```
 
-What the importer does:
-
-- Nested groups (`+`, `++`, `+++`) become groups and subgroups, using `title` as the name.
-- `probe` is inherited like in SmokePing:
-  - `FPing` → ping
-  - `FPing6` → ping over IPv6 only
-  - `DNS` → DNS (with `lookup` and `server`)
-  - `TCPPing` → TCP
-- Root servers and the large public resolvers get their IPv6 addresses added automatically.
-- The preview points out outdated addresses and duplicate targets.
-
-Afterwards, **Admin → IPv6** looks up AAAA records for targets that are still IPv4-only. You review each suggestion and apply the ones you want.
-
-Visitors do see target **names**. If a name contains an address (for example "Google 8.8.8.8"), rename the target if that address should stay private.
-
-## Configuration
-
-Settings are managed in **Admin → Settings** and apply without a restart. They cover:
-
-- the site title and welcome text, and whether the dashboard is public;
-- the measurement interval, probes per round and timeouts;
-- data retention;
-- mtr intervals and the loss threshold.
-
-Server settings (`.env`, written by `install.sh`):
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PINGSCOPE_DOMAIN` | | Your hostname(s) for HTTPS, comma-separated |
-| `ACME_EMAIL` | | Email for Let's Encrypt notices |
-| `COMPOSE_PROFILES` | `https` | `https` starts Caddy; empty runs without HTTPS |
-| `PINGSCOPE_LISTEN` | `127.0.0.1` | Listen address (`0.0.0.0` without HTTPS) |
-| `PINGSCOPE_PORT` | `8080` | Internal port |
-| `PINGSCOPE_TRUSTED_PROXIES` | `127.0.0.1` | Reverse proxies whose `X-Forwarded-*` headers are trusted |
-| `PINGSCOPE_DB` | `/data/pingscope.db` | Database file |
-
-## How data is stored
-
-- Each round (every minute by default), each series stores all probe round-trip times. This full-resolution data is kept for 14 days (configurable).
-- Older data is summarised per hour (20 quantiles plus loss) and kept indefinitely.
-- The 3-hour, day and week graphs use full-resolution data; month and year use the hourly summaries.
-- mtr history is kept for 30 days (configurable).
-
-## API
-
-These endpoints are read-only. They are public when the dashboard is public, and visitors get the address-free view.
-
-- `GET /api/tree`: groups, targets, current values
-- `GET /api/series?key=<target id>-<4|6>&range=3h|1d|7d|30d|1y`: graph data
-- `GET /api/mtr?key=<target id>-<4|6>[&before=ts][&at=ts][&only_issues=true]`: traceroute history
-
 ## Adding a probe type
 
 1. Create `pingscope/probes/myprobe.py`:
    - Define a class that extends `Probe`.
-   - Set `name`, `label`, `description` and `count_setting`.
-   - Implement `async def run(self, series, settings)`. It returns `{series.key: Result(sent, lost, [rtt_ms, ...])}`.
+   - Set `name`, `label`, `description` and `count_setting`, and optionally `fields` (extra form fields: `"dns_query"`, `"dns_type"`, `"port"`) and `default_port`.
+   - Implement `async def run(self, series, settings)`. It receives every series of this probe type for the round and returns `{series.key: Result(sent, lost, [rtt_ms, ...])}`. Raise `PartialFailure(results, message)` when only part of it could run.
 2. Decorate the class with `@register` and add the module to the import line in `pingscope/probes/__init__.py`.
 
-The new type appears in the admin panel automatically. `dns.py` and `tcp.py` are short examples.
+The new type appears in the admin panel automatically. [`tcp.py`](pingscope/probes/tcp.py) and [`dns.py`](pingscope/probes/dns.py) are short examples.
 
-## CLI
+## Security and privacy
 
-```
-python -m pingscope                                 start server
-python -m pingscope create-admin                    create an admin account
-python -m pingscope import FILE [--replace] [--no-known-ipv6] [--site-title]
-python -m pingscope export [FILE]                   JSON export of groups, targets and settings
-python -m pingscope backup FILE                     consistent copy of the database
-```
+- **Visitors never see hostnames, IP addresses or DNS query names** of targets. Traceroute hops are hidden unless you enable them; the destination is always shown as "destination". Target **names** are visible, so rename a target if its name contains an address that should stay private.
+- **Hidden groups** don't exist for visitors: not in the menu, counts or history, and their data returns 404.
+- The admin panel always needs a login. Passwords are hashed with **scrypt**; sessions are random tokens in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` over HTTPS). Failed logins are rate-limited per IP address. Admin requests need a custom header against CSRF. Responses carry `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers.
+- The first admin account is created with a **one-time setup code** from the server log, so nobody can claim a fresh install before you.
+- Telegram and Lettermint tokens are never sent back to the browser and are left out of JSON exports.
+- With HTTPS, PingScope itself only listens on `127.0.0.1`; Caddy is the only way in.
+
+Found a security problem? Please report it privately; see [SECURITY.md](SECURITY.md).
+
+## Troubleshooting
+
+| Problem | What to check |
+|---|---|
+| Browser warning / no certificate | **Admin → Settings → HTTPS** and `sudo docker logs pingscope-caddy`. Usually DNS doesn't point to the server yet, or port 80 is blocked. |
+| All IPv6 graphs are down | Does the server have IPv6? `ping -6 2001:4860:4860::8888` |
+| Ping targets all down, DNS targets fine | The container needs `NET_RAW` (already in `docker-compose.yml`). Check `sudo docker logs pingscope`. |
+| Loss always on the same ping of a round | Run `python -m pingscope ping-test --only <name>` to see the pattern. |
+| Forgot the admin password | `sudo docker exec -it pingscope python -m pingscope create-admin` creates a new admin. |
+| "Rounds may overlap" warning | Lower the probes per round or the spacing, or raise the interval. |
+
+More in the [install guide](docs/INSTALL.md#8-troubleshooting).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run PingScope locally and what to keep in mind.
+
+## License
+
+PingScope is released under the [MIT License](LICENSE).

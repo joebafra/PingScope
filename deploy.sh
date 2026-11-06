@@ -46,7 +46,7 @@ else
   die "no running PingScope install found in $DIR (docker compose or systemd)"
 fi
 
-git fetch --quiet origin "$BRANCH" || die "git fetch failed (check the deploy key: ssh -T git@github.com)"
+git fetch --quiet origin "$BRANCH" || die "git fetch failed (check access to GitHub; for a private fork over SSH: ssh -T git@github.com)"
 CUR=$(git rev-parse HEAD)
 NEW=$(git rev-parse "origin/$BRANCH")
 
