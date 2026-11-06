@@ -12,7 +12,8 @@ SCHEMA = {
                          "Allow viewing graphs without logging in. The admin panel always requires a login.", None, None),
     "public_show_hops": (False, bool, "Site", "Show traceroute hops to visitors",
                          "Show the router addresses along the path in mtr reports. Hostnames and IP addresses of "
-                         "targets are never shown to visitors; logged-in admins always see everything.", None, None),
+                         "targets are only shown to visitors in groups set to show them (Edit group); logged-in "
+                         "users always see everything.", None, None),
 
     "interval": (60, int, "Measurements", "Measurement interval (seconds)",
                  "Every target is measured once per interval.", 30, 3600),

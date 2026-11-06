@@ -301,6 +301,8 @@ function targetRow(t){
     if (lab && head){
       const fam = lab.querySelector('.badge'); fam?.classList.add('fam');
       if (fam) head.querySelector('.tname').after(fam);
+      const addr = lab.querySelector('.addr');  // the same IP as the host next to the name: show it once
+      if (addr && [t.host, t.host_v6].includes(addr.textContent)) addr.remove();
       for (const x of [...lab.children]) head.appendChild(x);
       lab.remove();
     }

@@ -210,13 +210,22 @@ def setup(request: Request, response: Response, body: dict = Body(...)):
 
 # ---- public data -----------------------------------------------------------------------
 
-def _series_json(x, private=True):
+def _series_json(x, private=True, address=False):
     if not private:  # visitors: no hostnames, addresses or error texts that contain them
-        return {"key": x.key, "family": x.family, "unresolved": x.address is None,
-                "mtr": bool(x.path), "last": collector.latest.get(x.key)}
+        out = {"key": x.key, "family": x.family, "unresolved": x.address is None,
+               "mtr": bool(x.path), "last": collector.latest.get(x.key)}
+        if address:  # the target's group shows addresses to visitors
+            out["address"] = x.address
+        return out
     return {"key": x.key, "family": x.family, "address": x.address, "error": x.error, "via": x.via,
             "unresolved": x.address is None, "mtr": bool(x.path), "path": x.path,
             "last": collector.latest.get(x.key)}
+
+
+def _shows_address(t, groups):
+    """Visitors see this target's host and addresses: its group (or a parent group) shows them, the target doesn't opt out."""
+    g = groups.get(t["group_id"]) or {}
+    return bool(g.get("show_addresses_effective")) and not t.get("hide_address")
 
 
 def _visible_to(request, tid):
@@ -238,23 +247,23 @@ def tree(request: Request, _=Depends(can_view)):
     user = current_user(request)
     admin = user is not None  # admins and viewers see the same dashboard; only admins get edit links
     groups = store.groups()
+    by_id = {g["id"]: dict(g) for g in groups}  # unfiltered, for the "show addresses" setting
     if not admin:  # hidden groups (and everything below them) don't exist for visitors
         groups = [g for g in groups if not g["hidden_effective"]]
         for g in groups:
-            g.pop("hidden", None)
-            g.pop("hidden_effective", None)
-            for k in [k for k in g if k.startswith("alert_")]:  # notification settings incl. Telegram chat IDs
-                g.pop(k, None)
+            for k in [k for k in g if k.startswith(("alert_", "hidden", "show_addresses"))]:
+                g.pop(k, None)  # notification settings (incl. Telegram chat IDs), visibility settings
     visible = {g["id"] for g in groups}
     targets = []
     for t in store.targets(enabled_only=True):
         if t["group_id"] not in visible:
             continue
+        addr = admin or _shows_address(t, by_id)
         item = {
             "id": t["id"], "group_id": t["group_id"], "name": t["name"], "probe": t["probe"], "families": t["families"],
-            "series": [_series_json(x, admin) for x in collector.series.get(t["id"], [])],
+            "series": [_series_json(x, admin, addr) for x in collector.series.get(t["id"], [])],
         }
-        if admin:  # the DNS query name is never shown on the dashboard, only in the admin edit form
+        if addr:  # the DNS query name is never shown on the dashboard, only in the admin edit form
             item.update(host=t["host"], host_v6=t["host_v6"],
                         port=t["port"] if t["probe"] != "ping" else None)
         targets.append(item)
@@ -329,15 +338,17 @@ def series(request: Request, key: str, range: str = "1d", points: int = Query(60
             "points": store.series(key, start, end, step, source)}
 
 
-def _mask_hops(runs, show_hops):
-    """Visitors never see the target's address; intermediate routers only when enabled in settings."""
+def _mask_hops(runs, show_hops, show_dest=False):
+    """Visitors see the target's address only when its group shows addresses; intermediate routers only when
+    enabled in settings."""
     for r in runs:
         hubs = r["hubs"]
         for i, h in enumerate(hubs):
             if h["host"] == "???":
                 continue
             if i == len(hubs) - 1:
-                h["host"] = "destination"
+                if not show_dest:
+                    h["host"] = "destination"
             elif not show_hops:
                 h["host"] = "hidden"
         if r.get("error"):
@@ -362,7 +373,8 @@ def mtr(request: Request, key: str, before: int | None = None, since: int | None
         runs = store.mtr_list(x.path, before=before, since=since, limit=limit + 1, issues_only=only_issues)
         runs, more = runs[:limit], len(runs) > limit
     if not current_user(request):
-        _mask_hops(runs, store.settings()["public_show_hops"])
+        groups = {g["id"]: g for g in store.groups()}
+        _mask_hops(runs, store.settings()["public_show_hops"], _shows_address(x.target, groups))
     return {"runs": runs, "more": more}
 
 
@@ -407,7 +419,7 @@ def admin_data():
 def create_group(body: dict = Body(...)):
     try:
         gid = store.create_group(body.get("name"), body.get("parent_id"), body.get("sort_mode") or "manual",
-                                 bool(body.get("hidden")))
+                                 bool(body.get("hidden")), bool(body.get("show_addresses")))
         if body.get("alert_chat_ids"):
             store.set_group_chats(gid, body["alert_chat_ids"])
         if body.get("alert_mode"):
@@ -427,6 +439,8 @@ def update_group(gid: int, body: dict = Body(...)):
             store.set_sort_mode(gid, body["sort_mode"], bool(body.get("sort_subgroups")))
         if "hidden" in body:
             store.set_hidden(gid, bool(body["hidden"]))
+        if "show_addresses" in body:
+            store.set_show_addresses(gid, bool(body["show_addresses"]))
         if "alert_chat_ids" in body:
             store.set_group_chats(gid, body["alert_chat_ids"])
         if "alert_mode" in body:

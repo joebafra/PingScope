@@ -124,6 +124,7 @@ tr.off td{opacity:.5}
     </div>
     <label class="check"><input type="checkbox" name="mtr"> <span>Run mtr traceroutes for this target</span></label>
     <label class="check"><input type="checkbox" name="enabled"> <span>Enabled</span></label>
+    <label class="check"><input type="checkbox" name="hide_address"> <span>Don't show this target's addresses to visitors <span class="muted small" id="hideAddrHelp"></span></span></label>
     <div class="field" data-f="alert_chat_ids"><span>Also send alerts for this target to <span class="faint">(Telegram, optional)</span></span>
       <div id="tgPick" class="tgpick"></div>
       <div class="row"><input name="alert_chat_ids" placeholder="other chat IDs, e.g. 123456789" autocomplete="off" spellcheck="false"><button type="button" class="btn" id="tgTest">Send test alert</button></div>
@@ -153,6 +154,7 @@ tr.off td{opacity:.5}
       <option value="name">Name, A → Z (always sorted automatically)</option></select></label>
     <label class="check" id="sortSubWrap"><input type="checkbox" name="sort_subgroups"> <span>Use this target order for all subgroups too</span></label>
     <label class="check"><input type="checkbox" name="hidden"> <span><b>Hide from visitors</b><br><span class="muted small">This group, its subgroups and their targets are only visible when logged in.</span></span></label>
+    <label class="check"><input type="checkbox" name="show_addresses"> <span><b>Show IP addresses to visitors</b><br><span class="muted small">Visitors see the host and the IPv4 and IPv6 addresses of the targets in this group and its subgroups, also in traceroutes. Single targets can opt out. DNS query names stay hidden. <span id="gAddrInherit"></span></span></span></label>
     <div class="alertbox">
       <label class="field"><span>Notifications</span><select name="alert_mode">
         <option value="inherit">Same as the parent group</option>

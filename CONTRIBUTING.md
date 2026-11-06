@@ -39,7 +39,7 @@ Or run the full stack with Docker: `docker compose up -d --build`.
 ## Guidelines
 
 - **Keep it small.** The only Python dependencies are FastAPI and Uvicorn, and the frontend is plain HTML, CSS and JavaScript without a build step or external scripts. Please keep it that way; a new dependency needs a very good reason.
-- **Privacy for visitors is a hard rule.** Anything sent to a visitor who is not logged in must not contain hostnames, IP addresses, DNS query names, notification settings or data of hidden groups. When you add a field to a public endpoint, check the visitor view.
+- **Privacy for visitors is a hard rule.** Anything sent to a visitor who is not logged in must not contain DNS query names, notification settings or data of hidden groups, and hostnames and IP addresses only for targets whose group shows them (`_shows_address` in `pingscope/web.py`). When you add a field to a public endpoint, check the visitor view.
 - **Database changes** are migrations in `Store.__init__` (`pingscope/db.py`): add columns with `ALTER TABLE ... ADD COLUMN` and a default, so existing installs upgrade automatically on start.
 - **Settings** are declared once in `pingscope/settings.py` (default, type, range and help text); the admin panel builds its form from that schema.
 - **New probe types** are a module in `pingscope/probes/`; see [Adding a probe type](README.md#adding-a-probe-type).

@@ -129,7 +129,7 @@ function viewTargets(){
 function renderTree(){
   const box = $('#gtree'); if (!box) return;
   const count = gid => { const ids = new Set([gid, ...descendants(gid)]); return A.data.targets.filter(t => ids.has(t.group_id)).length; };
-  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' <span title="Notifications on" aria-label="notifications on">🔔</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
+  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' <span title="Notifications on" aria-label="notifications on">🔔</span>' : ''}${g.show_addresses ? ' <span title="IP addresses shown to visitors" aria-label="IP addresses shown to visitors">🌐</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
     (kids(g.id).length ? `<ul>${kids(g.id).map(node).join('')}</ul>` : '') + '</li>';
   box.innerHTML = `<div class="row" style="padding:2px 4px 8px"><b class="grow">Groups</b><button class="btn sm" id="addTop">+ Group</button></div>` +
     `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>` +
@@ -229,7 +229,7 @@ function renderTargetsPane(){
   pane.innerHTML = `<div class="phead"><div style="margin-right:auto;min-width:0">` +
       (g ? `<div class="muted small">${esc(gPath(g.id).slice(0, -1).map(x => x.name).join(' › ') || 'Top level')}</div>` : '') +
       `<h2 style="margin:0">${g ? esc(g.name) : 'All targets'}</h2>` +
-      (g ? `<div class="muted small">${g.hidden_effective ? '🔒 Hidden from visitors · ' : ''}${alertSummary(g)} · ${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
+      (g ? `<div class="muted small">${g.hidden_effective ? '🔒 Hidden from visitors · ' : g.show_addresses_effective ? '🌐 IP addresses shown to visitors · ' : ''}${alertSummary(g)} · ${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
       (g ? `<button class="btn" id="gEdit">Edit group</button><button class="btn" id="gSub">+ Subgroup</button>` : '') +
       `<button class="btn primary" id="tAdd" ${A.data.groups.length ? '' : 'disabled'}>+ Add target</button></div>` +
     `<div class="row" style="margin-bottom:10px"><input id="tq" type="search" placeholder="Search all targets…" value="${esc(A.q)}"></div>` +
@@ -309,7 +309,7 @@ const tdlg = $('#tdlg'), tform = $('#tform');
 let editing = null;
 function openTarget(t, gid){
   editing = t;
-  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, note: '', group_id: gid};
+  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, hide_address: false, note: '', group_id: gid};
   $('#tdlgTitle').textContent = t ? 'Edit target' : 'Add target';
   tform.group_id.innerHTML = groupOptions(p.group_id);
   tform.probe.innerHTML = A.data.probes.map(x => `<option value="${x.name}">${esc(x.label)}</option>`).join('');
@@ -318,6 +318,13 @@ function openTarget(t, gid){
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
   tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
+  tform.hide_address.checked = !!p.hide_address;
+  const addrHelp = () => {
+    const g = A.groupMap.get(+tform.group_id.value);
+    $('#hideAddrHelp').textContent = g?.show_addresses_effective ? '(its group shows IP addresses to visitors)'
+      : "(its group doesn't show IP addresses to visitors, so they're hidden anyway)";
+  };
+  tform.group_id.onchange = addrHelp; addrHelp();
   chatPicker('#tgPick', tform.alert_chat_ids, p.alert_chat_ids, A.groupMap.get(p.group_id)?.alert_effective?.chats || []);
   $('#tgTest').onclick = async () => {
     const chats = pickedChats('#tgPick', tform.alert_chat_ids, true);
@@ -344,7 +351,7 @@ function probeChanged(){
 tform.probe.onchange = probeChanged;
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
-  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.alert_chat_ids = pickedChats('#tgPick', tform.alert_chat_ids); fd.alert_rounds = tform.alert_rounds.value;
+  fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.hide_address = tform.hide_address.checked; fd.alert_chat_ids = pickedChats('#tgPick', tform.alert_chat_ids); fd.alert_rounds = tform.alert_rounds.value;
   fd.group_id = +fd.group_id;
   return fd;
 }
@@ -423,6 +430,7 @@ function openGroup(g, parentId){
   gform.sort_mode.value = g ? (g.sort_mode || 'manual') : (A.groupMap.get(parentId)?.sort_mode || 'manual');
   gform.sort_subgroups.checked = false;
   gform.hidden.checked = !!(g && g.hidden);
+  gform.show_addresses.checked = !!(g && g.show_addresses);
   gform.alert_mode.value = g ? g.alert_mode : 'inherit';
   gform.alert_loss.value = g?.alert_loss ?? '';
   gform.alert_down.checked = g ? g.alert_down : true;
@@ -448,7 +456,11 @@ function openGroup(g, parentId){
     $('#alertInherit').textContent = m !== 'inherit' ? '' : p ? `Now: ${alertSummary(p, true)} (from ${p.alert_effective.from ? A.groupMap.get(p.alert_effective.from)?.name : 'default'})` : 'Top-level group: inherit means off.';
   };
   const preview = () => { clearTimeout(gPrevTimer); gPrevTimer = setTimeout(() => loadPreview(g), 350); };
-  gform.alert_mode.onchange = () => { syncAlert(); preview(); }; gform.parent_id.onchange = syncAlert; syncAlert();
+  const syncAddr = () => {
+    const p = parent();
+    $('#gAddrInherit').textContent = p?.show_addresses_effective ? 'Already on through a parent group.' : '';
+  };
+  gform.alert_mode.onchange = () => { syncAlert(); preview(); }; gform.parent_id.onchange = () => { syncAlert(); syncAddr(); }; syncAlert(); syncAddr();
   gform.alert_loss.oninput = preview; gform.alert_down.onchange = preview; gform.alert_rounds.oninput = preview;
   $('#alertPreview').innerHTML = ''; preview();
   $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
@@ -469,6 +481,7 @@ gform.addEventListener('submit', async e => {
   e.preventDefault();
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
+                show_addresses: gform.show_addresses.checked,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
                 alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_rounds: gform.alert_rounds.value,
                 alert_chat_ids: pickedChats('#gTgPick', gform.alert_chat_ids)};

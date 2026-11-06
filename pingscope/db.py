@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS targets(
   dns_query TEXT NOT NULL DEFAULT '', dns_type TEXT NOT NULL DEFAULT 'A',
   port INTEGER, count INTEGER, mtr INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1,
   note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
-  alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER);
+  alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER,
+  hide_address INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -56,7 +57,8 @@ CREATE TABLE IF NOT EXISTS telegram_contacts(
 ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
-                 "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds")
+                 "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds",
+                 "hide_address")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -110,7 +112,8 @@ def verify_password(pw, stored):
         return False
 
 
-GROUP_COLS = "id, parent_id, name, sort, sort_mode, hidden, alert_mode, alert_loss, alert_down, alert_email, alert_telegram, alert_rounds, alert_chat_ids"
+GROUP_COLS = ("id, parent_id, name, sort, sort_mode, hidden, show_addresses, alert_mode, alert_loss, alert_down, alert_email, "
+              "alert_telegram, alert_rounds, alert_chat_ids")
 
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
 ROLES = ("admin", "viewer")
@@ -140,11 +143,14 @@ class Store:
             self.c.execute("ALTER TABLE targets ADD COLUMN alert_chat_ids TEXT NOT NULL DEFAULT ''")
         if "alert_rounds" not in tcols:  # NULL = use the group's setting
             self.c.execute("ALTER TABLE targets ADD COLUMN alert_rounds INTEGER")
+        if "hide_address" not in tcols:  # 1 = never show this target's addresses to visitors
+            self.c.execute("ALTER TABLE targets ADD COLUMN hide_address INTEGER NOT NULL DEFAULT 0")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1"),
                          ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_rounds", "INTEGER"),
-                         ("alert_chat_ids", "TEXT NOT NULL DEFAULT ''")):
+                         ("alert_chat_ids", "TEXT NOT NULL DEFAULT ''"),
+                         ("show_addresses", "INTEGER NOT NULL DEFAULT 0")):  # 1 = visitors see hosts and addresses
             if col not in gcols:
                 self.c.execute(f"ALTER TABLE groups ADD COLUMN {col} {ddl}")
         self.lock = threading.RLock()
@@ -220,6 +226,12 @@ class Store:
             while p in by and not hid:
                 hid, p = bool(by[p]["hidden"]), by[p]["parent_id"]
             g["hidden_effective"] = hid
+        for g in out:  # addresses are shown to visitors when this group or any parent group shows them
+            g["show_addresses"] = bool(g["show_addresses"])
+            p, show = g, False
+            while p is not None and not show:
+                show, p = bool(p["show_addresses"]), by.get(p["parent_id"])
+            g["show_addresses_effective"] = show
         return out
 
     def hidden_group_ids(self):
@@ -228,6 +240,10 @@ class Store:
     def set_hidden(self, gid, hidden):
         with self.lock, self.c:
             self.c.execute("UPDATE groups SET hidden=? WHERE id=?", (1 if hidden else 0, gid))
+
+    def set_show_addresses(self, gid, show):
+        with self.lock, self.c:
+            self.c.execute("UPDATE groups SET show_addresses=? WHERE id=?", (1 if show else 0, gid))
 
     def group(self, gid):
         r = self._one(f"SELECT {GROUP_COLS} FROM groups WHERE id=?", (gid,))
@@ -254,7 +270,7 @@ class Store:
                     todo.append(c)
         return out
 
-    def create_group(self, name, parent_id=None, sort_mode="manual", hidden=False):
+    def create_group(self, name, parent_id=None, sort_mode="manual", hidden=False, show_addresses=False):
         name = str(name or "").strip()[:200]
         if not name:
             raise ValueError("Group name is required")
@@ -262,8 +278,9 @@ class Store:
             raise ValueError("Parent group not found")
         sort_mode = _sort_mode(sort_mode)
         with self.lock, self.c:
-            cur = self.c.execute("INSERT INTO groups(parent_id, name, sort, sort_mode, hidden) VALUES (?,?,?,?,?)",
-                                 (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode, 1 if hidden else 0))
+            cur = self.c.execute("INSERT INTO groups(parent_id, name, sort, sort_mode, hidden, show_addresses) VALUES (?,?,?,?,?,?)",
+                                 (parent_id, name, self._next_sort("groups", "parent_id", parent_id), sort_mode,
+                                  1 if hidden else 0, 1 if show_addresses else 0))
             return cur.lastrowid
 
     def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True, rounds=None):
@@ -336,6 +353,7 @@ class Store:
         t["mtr"] = bool(t["mtr"])
         t["enabled"] = bool(t["enabled"])
         t["alert_skip"] = bool(t["alert_skip"])
+        t["hide_address"] = bool(t.get("hide_address"))
         return t
 
     def targets(self, enabled_only=False):

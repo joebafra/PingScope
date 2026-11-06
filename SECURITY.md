@@ -17,7 +17,7 @@ Only the latest version on the `main` branch gets security fixes. Servers with [
 
 PingScope is designed so that a visitor of a public dashboard never learns more than target names and measurements. Things we especially want to hear about:
 
-- A way for a visitor (not logged in) to see hostnames, IP addresses, DNS query names, notification settings, Telegram chat IDs or targets in hidden groups.
+- A way for a visitor (not logged in) to see DNS query names, notification settings, Telegram chat IDs, targets in hidden groups, or hostnames and IP addresses of targets whose group doesn't show them.
 - A way for a *Viewer* account to change anything, or for anyone to reach the admin API without an admin session.
 - Ways to read the Telegram or Lettermint tokens, bypass the login rate limit, or take over a fresh install without the setup code.
 - Command injection through target fields (hosts are passed to `fping` and `mtr`).

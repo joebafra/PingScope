@@ -11,7 +11,7 @@ PingScope measures round-trip time and packet loss to your routers, customers, D
 - **SmokePing-style graphs** from 3 hours to a year, with crosshair, drag-to-zoom and click-for-traceroute
 - **mtr traceroutes** every 15 minutes, every minute during problems
 - **Alerts** by Telegram and email per group, with a preview and extra chats for customers
-- **Public dashboard** without hostnames or IP addresses; Admin and Viewer accounts
+- **Public dashboard** without hostnames or IP addresses, or with them per group; Admin and Viewer accounts
 - **SmokePing import**, JSON export, a single SQLite file for all data
 
 Source code, screenshots and full documentation: **https://github.com/joebafra/PingScope**

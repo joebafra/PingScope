@@ -58,6 +58,7 @@ def clean_target(data, probes):
     t["mtr"] = bool(data.get("mtr", True))
     t["enabled"] = bool(data.get("enabled", True))
     t["alert_skip"] = bool(data.get("alert_skip", False))
+    t["hide_address"] = bool(data.get("hide_address", False))
     ids = [x for x in re.split(r"[\s,;]+", str(data.get("alert_chat_ids") or "").strip()) if x]
     bad = [x for x in ids if not re.fullmatch(r"-?\d{3,20}|@[A-Za-z]\w{4,31}", x)]
     if bad:

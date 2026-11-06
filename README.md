@@ -58,7 +58,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 | Configuration | Text config file, reload to apply | Web admin panel; changes apply within a round |
 | Traceroutes | Not included | mtr every 15 minutes, every minute during problems, linked from the graphs |
 | Alerts | Pattern-based alerts by mail or script | Telegram and email per group, with a preview of how many alerts you would get |
-| Visitors | One view for everyone | Public dashboard without hostnames or IP addresses; hidden groups; Admin and Viewer accounts |
+| Visitors | One view for everyone | Public dashboard without hostnames or IP addresses (or with them, per group); hidden groups; Admin and Viewer accounts |
 | Migration | | Imports your SmokePing `Targets` file |
 
 ## Screenshots
@@ -143,6 +143,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Offline** list: targets that got no reply at all, or whose hostname no longer resolves, with how long they have been offline and a filter (offline for at least 1 hour / 1 day / 7 / 30 days). Handy for cleaning up old customer connections.
 - **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe count, mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
 - **Groups** can be **hidden from visitors**: the group, its subgroups and their targets only exist for logged-in users.
+- **Show IP addresses to visitors** per group (off by default): visitors then see the host and the IPv4 and IPv6 addresses of the targets in that group and its subgroups, also as the destination in traceroutes. Single targets can opt out with *Don't show this target's addresses to visitors*. Groups that show addresses get a 🌐 in the group list.
 - **Import & export:** SmokePing import with preview, JSON export and import of groups, targets and settings.
 - **Settings** apply without a restart, with warnings for combinations that don't fit (for example rounds that would overlap). A status card shows the last round and whether fping and mtr are installed, and an **HTTPS / SSL** card shows per hostname who issued the certificate, when it expires and whether HTTP redirects to HTTPS.
 - **Users** with two roles: **Admin** (full access) and **Viewer** (view-only: sees the dashboard with hostnames, IP addresses, traceroute hops and hidden groups, but can't change anything). Every user can change their own password.
@@ -244,7 +245,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Welcome text | | | Shown at the top of the overview page. |
 | Dashboard style | Modern | | *Modern* follows the visitor's light/dark preference; *Classic* is SmokePing-style. |
 | Public dashboard | on | | Allow viewing graphs without logging in. The admin panel always requires a login. |
-| Show traceroute hops to visitors | off | | Show the router addresses along the path in mtr reports. Target hostnames and addresses are never shown to visitors. |
+| Show traceroute hops to visitors | off | | Show the router addresses along the path in mtr reports. Target hostnames and addresses are only shown in groups set to show them. |
 
 **Measurements**
 
@@ -369,7 +370,7 @@ deploy.sh          update with backup, health check and rollback
 
 ## API
 
-These endpoints are read-only and return JSON. They are public when the dashboard is public (otherwise they need a login), and visitors get the address-free view: no hostnames, IP addresses, DNS query names, hidden groups or notification settings.
+These endpoints are read-only and return JSON. They are public when the dashboard is public (otherwise they need a login), and visitors get the public view: no hidden groups, notification settings or DNS query names, and hostnames and IP addresses only for targets whose group shows them.
 
 | Endpoint | Returns |
 |---|---|
@@ -421,7 +422,7 @@ The new type appears in the admin panel automatically. [`tcp.py`](pingscope/prob
 
 ## Security and privacy
 
-- **Visitors never see hostnames, IP addresses or DNS query names** of targets. Traceroute hops are hidden unless you enable them; the destination is always shown as "destination". Target **names** are visible, so rename a target if its name contains an address that should stay private.
+- **By default visitors never see hostnames or IP addresses** of targets, and they never see DNS query names. You can show the host and IPv4/IPv6 addresses per group (*Edit group → Show IP addresses to visitors*, off by default), and single targets can opt out. Intermediate traceroute hops are hidden unless you enable them; the destination is shown as "destination" unless the target's addresses are shown. Target **names** are always visible, so rename a target if its name contains an address that should stay private.
 - **Hidden groups** don't exist for visitors: not in the menu, counts or history, and their data returns 404.
 - The admin panel always needs a login. Passwords are hashed with **scrypt**; sessions are random tokens in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` over HTTPS). Failed logins are rate-limited per IP address. Admin requests need a custom header against CSRF. Responses carry `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers.
 - The first admin account is created with a **one-time setup code** from the server log, so nobody can claim a fresh install before you.
