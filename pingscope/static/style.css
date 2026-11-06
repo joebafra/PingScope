@@ -66,6 +66,13 @@ label.field .errmsg,div.field .errmsg{color:var(--bad);font-size:12px;margin-top
 .seg button.on{background:var(--accent);color:var(--accent-fg)}
 .seg svg{width:15px;height:15px;display:block}
 .seg.icons button{padding:6px 8px;display:inline-flex;align-items:center}
+/* tiny copy button next to an address */
+.copy{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;margin:0;border:0;border-radius:4px;background:transparent;color:var(--faint);cursor:pointer;flex:none;vertical-align:middle;align-self:center}
+.info .copy{margin-left:3px;vertical-align:-3px}
+.copy:hover,.copy:focus-visible{color:var(--accent);background:var(--hover)}
+.copy svg{width:12px;height:12px;display:block}
+.copy.done{color:var(--ok)}
+.copy.fail{color:var(--bad)}
 
 .badge{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--grid);color:var(--muted);white-space:nowrap;vertical-align:1px}
 .badge.dns{background:#8b5cf61f;color:#7c3aed}

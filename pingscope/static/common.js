@@ -290,6 +290,31 @@ const PS = (() => {
     paint();
   }
 
+  // Tiny copy button next to an address. navigator.clipboard only works over HTTPS (or localhost), so plain
+  // http://<ip> falls back to a hidden textarea + execCommand('copy').
+  const ICON_COPY = '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+  const ICON_DONE = '<path d="M20 6 9 17l-5-5"/>';
+  const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+  const copyBtn = text => text ? `<button type="button" class="copy" data-copy="${esc(text)}" title="Copy" aria-label="Copy ${esc(text)}">${svg(ICON_COPY)}</button>` : '';
+  async function copyText(text){
+    try { if (navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return true; } } catch(e){}
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){}
+    ta.remove();
+    return ok;
+  }
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.copy'); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    const ok = await copyText(b.dataset.copy);
+    b.classList.toggle('done', ok); b.classList.toggle('fail', !ok);
+    b.innerHTML = svg(ok ? ICON_DONE : ICON_COPY); b.title = ok ? 'Copied' : 'Copy failed: select the text instead';
+    clearTimeout(b._t); b._t = setTimeout(() => { b.classList.remove('done', 'fail'); b.innerHTML = svg(ICON_COPY); b.title = 'Copy'; }, 1500);
+  });
+
   // Order targets of one group: by name (natural A→Z, ping before dns before tcp) or by manual order
   const PROBE_ORDER = {ping: 0, dns: 1, tcp: 2};
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}) ||
@@ -305,5 +330,5 @@ const PS = (() => {
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
-          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme};
+          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn};
 })();

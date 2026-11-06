@@ -285,7 +285,7 @@ function viewGroup(gid){
 function targetRow(t){
   const el = document.createElement('div'); el.className = 'trow'; el.dataset.t = t.id;
   el.innerHTML = `<div class="thead"><a class="tname" href="#/t/${t.id}">${esc(t.name)}</a>${probeBadge(t.probe)}` +
-    (hostLabel(t) ? `<span class="host">${esc(hostLabel(t))}</span>` : '') + '</div>';
+    (hostLabel(t) ? `<span class="host">${esc(hostLabel(t))}</span>${PS.copyBtn(t.host || t.host_v6)}` : '') + '</div>';
   let fams = visibleFams();
   if (fams.length === 2){
     const missing = fams.filter(f => !famSeries(t, f));
@@ -302,7 +302,10 @@ function targetRow(t){
       const fam = lab.querySelector('.badge'); fam?.classList.add('fam');
       if (fam) head.querySelector('.tname').after(fam);
       const addr = lab.querySelector('.addr');  // the same IP as the host next to the name: show it once
-      if (addr && [t.host, t.host_v6].includes(addr.textContent)) addr.remove();
+      if (addr && [t.host, t.host_v6].includes(addr.textContent)){
+        if (addr.nextElementSibling?.matches('button.copy')) addr.nextElementSibling.remove();
+        addr.remove();
+      }
       for (const x of [...lab.children]) head.appendChild(x);
       lab.remove();
     }
@@ -329,7 +332,7 @@ function famBox(t, f, range, big, onPick){
       (S.data.can_edit && f === 6 && t.families !== 'ipv4' ? `<a href="admin#edit=${t.id}">Add IPv6 address</a>` : '') + '</div>';
     return box;
   }
-  box.innerHTML = `<div class="clabel"><span class="badge">IPv${f}</span>${s.address ? `<span class="addr">${esc(s.address)}</span>` : ''}` +
+  box.innerHTML = `<div class="clabel"><span class="badge">IPv${f}</span>${s.address ? `<span class="addr">${esc(s.address)}</span>${PS.copyBtn(s.address)}` : ''}` +
     `<span class="now" data-now="${s.key}">${valHTML(s)}</span></div>` +
     (s.error ? `<div class="err">${esc(s.error)}</div>` : '');
   const title = document.createElement('div'); title.className = 'ctitle';
@@ -356,9 +359,9 @@ function viewTarget(tid){
     `<div class="row" style="flex-wrap:wrap"><h1 style="margin:0">${esc(t.name)}</h1>${probeBadge(t.probe, S.data.probes[t.probe])}` +
     (S.data.can_edit ? `<a class="btn sm" href="admin#edit=${t.id}" style="margin-left:auto">Edit</a>` : '') + '</div>' +
     (t.host !== undefined ? `<div class="info">` +
-      (t.host ? `<span>Host <b>${esc(t.host)}</b></span>` : '') +
-      (s4 ? `<span>IPv4 <b>${esc(s4.address || 'unresolved')}</b></span>` : '') +
-      (s6 ? `<span>IPv6 <b>${esc(s6.address || 'unresolved')}</b></span>` : '') +
+      (t.host ? `<span>Host <b>${esc(t.host)}</b>${PS.copyBtn(t.host)}</span>` : '') +
+      (s4 ? `<span>IPv4 <b>${esc(s4.address || 'unresolved')}</b>${PS.copyBtn(s4.address)}</span>` : '') +
+      (s6 ? `<span>IPv6 <b>${esc(s6.address || 'unresolved')}</b>${PS.copyBtn(s6.address)}</span>` : '') +
       (t.port && t.probe !== 'ping' ? `<span>Port <b>${t.port}</b></span>` : '') + '</div>'
       : `<div class="info"><span>Measured over ${t.series.map(s => 'IPv' + s.family).join(' and ') || '–'}</span></div>`) +
     `<div id="ranges"></div>` +
