@@ -36,6 +36,17 @@ class Probe:
     def count(self, series, s):
         return series.target.get("count") or s[self.count_setting]
 
+    # per-target overrides of the global settings (None = use the setting)
+    def spacing_ms(self, series, s):
+        return series.target.get("spacing_ms") or s["probe_spacing_ms"]
+
+    def timeout_ms(self, series, s):
+        return series.target.get("timeout_ms") or s["timeout_ms"]
+
+    def duration(self, series, s):
+        """Worst-case seconds one round of this probe takes for a series."""
+        return (self.count(series, s) * self.spacing_ms(series, s) + self.timeout_ms(series, s)) / 1000
+
     async def run(self, series, s):
         """Measure all given series once. Returns {series.key: Result}."""
         raise NotImplementedError

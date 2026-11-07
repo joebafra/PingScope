@@ -81,7 +81,9 @@ It is a single small Python service with a SQLite database. Install it on a Linu
   - **Ping (ICMP)** with [fping](https://fping.org/): round-trip time and packet loss. All targets of a round are pinged in parallel by one fping process per address family, so hundreds of targets cost very little.
   - **DNS query**: response time of a DNS server for a query (UDP). Choose the query name and record type (A, AAAA, NS, SOA, MX, TXT, CNAME, PTR). Any valid answer counts, including NXDOMAIN.
   - **TCP connect**: time to open a TCP connection to a port (443 by default). Useful for hosts that block ICMP, or to watch a web or mail server.
-- **Every minute by default**, with 20 pings (or 10 DNS queries / TCP connects) per target per round, spaced one second apart. Interval, counts, spacing and timeout are settings; a target can override its own probe count.
+- **Every minute by default**, with 20 pings of 56 bytes (or 10 DNS queries / TCP connects) per target per round, spaced one second apart. Interval, counts, spacing, timeout and ping packet size are settings.
+- **Per-target probe settings:** a target can have its own probes per round, spacing, timeout and packet size (*Edit target → Probe settings*), like a separate probe definition in SmokePing.
+- **Together or spread:** all targets start at the beginning of each round, or each target gets its own fixed random moment in the round (like SmokePing's `offset = random`), so not everything is sent at once. Set it for all targets and override it per target.
 - **Honest data:** when a probe can't run locally (fping missing, no IPv6 on the server, out of processes), the round is left as a gap instead of being recorded as 100% packet loss, and the error is shown in the admin panel.
 - **"Test now"** in the target dialog runs the probe immediately and shows the result, before you save.
 
@@ -101,7 +103,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Drag to zoom:** drag across a graph to zoom all graphs of that period into the selected time. Double-click or *Reset zoom* to go back. Zoomed graphs use full-resolution data where available.
 - **Click a point** in a graph to open the traceroute closest to that moment.
 - **A tight Y axis:** the top follows the bulk of the pings instead of the single highest spike, and a steady 8 ms line doesn't start at 0, so graphs aren't mostly empty space.
-- Under every graph: **average median, min, max, jitter and loss** for that period.
+- Under every graph: **average median, min, max, jitter and loss** for that period, and the probe used, like SmokePing: *probe: 20 ICMP Echo Pings (56 Bytes) every 60 seconds*.
 
 ### Dashboard
 
@@ -141,7 +143,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 
 - **Targets:** nested groups and subgroups, drag targets onto a group to move them, ↑ ↓ ordering or automatic A → Z (natural) sorting per group, bulk actions (move, enable, disable, alerts on/off, delete), search over names, addresses, query names and notes.
 - **Offline** list: targets that got no reply at all, or whose hostname no longer resolves, with how long they have been offline and a filter (offline for at least 1 hour / 1 day / 7 / 30 days). Handy for cleaning up old customer connections.
-- **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe count, mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
+- **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe settings (probes per round, spacing, timeout, packet size, together or spread), mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
 - **Groups** can be **hidden from visitors**: the group, its subgroups and their targets only exist for logged-in users.
 - **Show IP addresses to visitors** per group (off by default): visitors then see the host and the IPv4 and IPv6 addresses of the targets in that group and its subgroups, also as the destination in traceroutes. Single targets can opt out with *Don't show this target's addresses to visitors*. Groups that show addresses get a 🌐 in the group list.
 - **Import & export:** SmokePing import with preview, JSON export and import of groups, targets and settings.
@@ -154,6 +156,7 @@ Paste your SmokePing `Targets` section (or a whole config file, or upload it) in
 
 - Nested groups (`+`, `++`, `+++`) become groups and subgroups, using `title` as the name.
 - `probe` is inherited like in SmokePing: `FPing` → ping, `FPing6` → ping over IPv6 only, `DNS` → DNS (with `lookup` and `server`), `TCPPing` → TCP.
+- Your own probes from the `*** Probes ***` section (for example `++ FPingGateway` under `+ FPing`) are understood too: their `pings`, `packetsize`, `timeout`, `hostinterval` and `offset = random` become the probe settings of the targets that use them. PingScope uses one measurement interval for all targets, so a different `step` is reported in the preview.
 - The known IPv6 addresses of the **root servers and large public resolvers** (Google, Cloudflare, Quad9, OpenDNS, NextDNS) are added automatically, so they're measured over IPv6 right away.
 - The preview shows the resulting tree and points out outdated addresses and duplicate targets.
 - *Add to existing* reuses groups with the same name and skips identical targets; *Replace everything* starts fresh.
@@ -259,6 +262,8 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | TCP connects per round | 10 | 1–100 | Connection attempts per TCP target per round. |
 | Spacing between probes | 1000 ms | 100–10000 | Time between two probes to the same target within a round. |
 | Probe timeout | 1500 ms | 100–10000 | A probe without a reply within this time counts as lost. |
+| Ping packet size | 56 bytes | 12–1452 | ICMP data bytes per ping, like SmokePing's `packetsize`. |
+| When targets are measured | Together | | *Together* at the start of each round, or *Spread* over the round (each target its own fixed random moment, like `offset = random`). |
 | Hostname re-resolve interval | 300 s | 60–86400 | How often A/AAAA records of hostname targets are looked up again. |
 
 **Storage**

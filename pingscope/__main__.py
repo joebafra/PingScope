@@ -121,7 +121,7 @@ async def ping_test(store, args):
     watch = {k for k, v in names.items() if q and (q in k[1].lower() or any(q in n.lower() for n in v))}
     if args.only and not watch:
         sys.exit(f"No ping target matches '{args.only}'")
-    print(f"PingScope ping test: {count} pings per target, spacing {s['probe_spacing_ms']} ms, "
+    print(f"PingScope ping test: {count} pings of {s['ping_size']} bytes per target, spacing {s['probe_spacing_ms']} ms, "
           f"timeout {s['timeout_ms']} ms" + (" (only the --only targets)" if args.solo else " (all targets at once, like a real round)"))
     print("Note: this runs next to the normal measurements, so the server sends twice as many pings meanwhile.\n")
     for rnd in range(1, args.rounds + 1):
@@ -133,7 +133,8 @@ async def ping_test(store, args):
         t0 = time.time()
 
         async def run(fam, addrs):
-            proc = await asyncio.create_subprocess_exec(*fping_cmd(addrs, fam, count, s), stdout=asyncio.subprocess.PIPE,
+            cmd = fping_cmd(addrs, fam, count, s["probe_spacing_ms"], s["timeout_ms"], s["ping_size"])
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.PIPE)
             out, err = await proc.communicate()
             res = {}

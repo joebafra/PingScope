@@ -55,6 +55,8 @@ def parse_smokeping(text):
     stack = [root]
     cur = root
     warnings = []
+    # *** Probes ***: "+ FPing" defines a probe, "++ FPingGateway" a probe based on it with its own settings
+    probe_defs, pcur, pbase = {}, None, None
     for no, raw in enumerate(lines, 1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -62,6 +64,21 @@ def parse_smokeping(text):
         m = _SECTION.match(line)
         if m:
             section = m.group(1).lower()
+            continue
+        if section == "probes":
+            m = _NODE.match(line)
+            if m:
+                name, level = m.group(2), len(m.group(1))
+                if level == 1:
+                    pbase = probe_defs[name.lower()] = {"name": name, "base": name.lower(), "vars": {}, "line": no}
+                    pcur = pbase
+                else:
+                    pcur = probe_defs[name.lower()] = {"name": name, "base": pbase["base"] if pbase else name.lower(),
+                                                       "vars": dict(pbase["vars"]) if pbase else {}, "line": no}
+                continue
+            m = _VAR.match(line)
+            if m and pcur is not None:
+                pcur["vars"][m.group(1).lower()] = m.group(2).strip()
             continue
         if section != "targets":
             continue
@@ -91,10 +108,40 @@ def parse_smokeping(text):
         name = n["vars"].get("title") or n["vars"].get("menu") or n["id"]
         return _SUFFIX.sub("", " ".join(name.split()))
 
+    steps = {}  # probe step (seconds) that differs from PingScope's interval -> probe names
+
+    def probe_settings(t, pdef, v):
+        """Settings from a SmokePing probe definition: pings, packetsize, timeout, hostinterval, offset."""
+        pv = pdef["vars"] if pdef else {}
+        num = lambda x: float(str(x).strip().rstrip("s"))
+        try:
+            if pv.get("packetsize") and t["probe"] == "ping" and int(pv["packetsize"]) != DEFAULTS["ping_size"]:
+                t["packet_size"] = int(pv["packetsize"])
+            if pv.get("timeout") and round(num(pv["timeout"]) * 1000) != DEFAULTS["timeout_ms"]:
+                t["timeout_ms"] = round(num(pv["timeout"]) * 1000)
+            if pv.get("hostinterval") and round(num(pv["hostinterval"]) * 1000) != DEFAULTS["probe_spacing_ms"]:
+                t["spacing_ms"] = round(num(pv["hostinterval"]) * 1000)
+        except ValueError:
+            warnings.append(f"Line {pdef['line']}: probe '{pdef['name']}' has a setting that isn't a number; ignored.")
+        for k, lo, hi in (("packet_size", 12, 1452), ("timeout_ms", 100, 10000), ("spacing_ms", 100, 10000)):
+            if k in t and not lo <= t[k] <= hi:
+                warnings.append(f"Line {pdef['line']}: probe '{pdef['name']}': {k.replace('_', ' ')} {t.pop(k)} is outside "
+                                f"{lo}–{hi}; the default is used.")
+        offset = str(pv.get("offset", "")).strip().lower()
+        if offset == "random":
+            t["start_offset"] = "random"
+        if pdef and pv.get("step") and pv["step"].strip() != str(DEFAULTS["interval"]):
+            steps.setdefault(pv["step"].strip(), set()).add(pdef["name"])
+        if not v.get("pings") and pv.get("pings"):
+            v["pings"] = pv["pings"]
+
     def to_target(n, inh):
         v = {**inh, **n["vars"]}
         probe_raw = (v.get("probe") or "FPing").strip()
+        pdef = probe_defs.get(probe_raw.lower())
         probe, families = PROBE_MAP.get(probe_raw.lower(), (None, "auto"))
+        if probe is None and pdef:
+            probe, families = PROBE_MAP.get(pdef["base"], (None, "auto"))
         if probe is None:
             warnings.append(f"Line {n['line']}: probe '{probe_raw}' is not supported; '{node_name(n)}' imported as ping.")
             probe = "ping"
@@ -105,6 +152,7 @@ def parse_smokeping(text):
             t["dns_type"] = (v.get("recordtype") or "A").upper()
         if probe in ("dns", "tcp") and v.get("port"):
             t["port"] = v["port"]
+        probe_settings(t, pdef, v)
         default_count = {"ping": DEFAULTS["ping_count"], "dns": DEFAULTS["dns_count"], "tcp": DEFAULTS["tcp_count"]}[probe]
         if v.get("pings") and str(v["pings"]).strip() != str(default_count):
             t["count"] = v["pings"]
@@ -129,6 +177,10 @@ def parse_smokeping(text):
         return group
 
     top = walk(root, {"probe": root["vars"].get("probe", "FPing")}, [])
+    for step, names in sorted(steps.items()):
+        warnings.append(f"Probe{'s' if len(names) > 1 else ''} {', '.join(sorted(names))} use{'' if len(names) > 1 else 's'} "
+                        f"step = {step}; PingScope measures every target at the same interval "
+                        f"(Settings → Measurement interval, default {DEFAULTS['interval']}s).")
     groups = top["groups"]
     if top["targets"]:
         groups.insert(0, {"name": "Ungrouped", "groups": [], "targets": top["targets"]})
@@ -258,7 +310,8 @@ def export(store, include_settings=True):
     groups = store.groups()
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
-            "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds", "hide_address")
+            "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds", "hide_address",
+            "spacing_ms", "timeout_ms", "packet_size", "start_offset")
 
     def walk(parent_id):
         out = []

@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import time
+import zlib
 
 from . import settings as settings_mod
 from .alerts import Alerter
@@ -70,7 +71,8 @@ class Collector:
         targets = await asyncio.to_thread(self.store.targets, True)
         series = await self.resolver.plan(targets, s["resolve_interval"])
         self._set_series(series)
-        results, errors = await measure(series, s)
+        self.warnings += too_long(series, s)
+        results, errors = await measure_spread(series, s, ts)
         self.warnings += [f"The {p} probe could not run in the last round, so no data was recorded for it: {e}"
                           for p, e in errors.items()]
         rows = []
@@ -92,6 +94,54 @@ class Collector:
         self.last_run = ts
         self.last_duration = round(time.monotonic() - t0, 1)
         log.info("Round %s: %d series in %.1fs", time.strftime("%H:%M", time.localtime(ts)), len(rows), self.last_duration)
+
+
+def start_offset(series, s):
+    """Seconds after the start of the round at which this series is measured.
+
+    "start": at the beginning of the round. "random" (like SmokePing's offset = random): a fixed moment per target,
+    spread over the part of the round that still leaves time to finish before the next round. Whole seconds, so
+    targets with the same moment share one fping process.
+    """
+    t = series.target
+    if (t.get("start_offset") or s["start_offset"]) != "random" or t["probe"] not in PROBES:
+        return 0
+    room = s["interval"] * 0.9 - PROBES[t["probe"]].duration(series, s) - 2
+    if room < 1:
+        return 0
+    return int(zlib.crc32(f"pingscope-offset-{t['id']}".encode()) % 10000 / 10000 * room)
+
+
+def too_long(series, s):
+    """Warnings for targets whose own probe settings don't fit in the measurement interval."""
+    out, seen = [], set()
+    for x in series:
+        p = PROBES.get(x.target["probe"])
+        if p and x.target["id"] not in seen and p.duration(x, s) > s["interval"] * 0.9:
+            seen.add(x.target["id"])
+            out.append(f"{x.target['name']}: probes per round × spacing ({p.duration(x, s):.0f}s) is too long for the "
+                       f"{s['interval']}s interval; rounds may overlap. Lower its probes or spacing.")
+    return out[:10]
+
+
+async def measure_spread(series, s, ts):
+    """Measure all series, each starting at its own offset after `ts` (the start of the round)."""
+    by_offset = {}
+    for x in series:
+        by_offset.setdefault(start_offset(x, s), []).append(x)
+
+    async def batch(offset, xs):
+        delay = ts + offset - time.time()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        return await measure(xs, s)
+
+    results, errors = {}, {}
+    for res, err in await asyncio.gather(*[batch(o, xs) for o, xs in sorted(by_offset.items())]):
+        results.update(res)
+        for p, e in err.items():
+            errors.setdefault(p, e)
+    return results, errors
 
 
 async def measure(series, s):

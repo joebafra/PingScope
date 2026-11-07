@@ -32,14 +32,14 @@ def parse_fping(text):
     return res
 
 
-def fping_cmd(addrs, family, count, s):
+def fping_cmd(addrs, family, count, spacing_ms, timeout_ms, size):
     """The exact fping command line used for a measurement round (also used by `pingscope ping-test`)."""
-    return ["fping", f"-{family}", "-q", "-C", str(count), "-p", str(s["probe_spacing_ms"]),
-            "-t", str(s["timeout_ms"]), "-i", "5", "-B1", "-r0", *addrs]
+    return ["fping", f"-{family}", "-q", "-C", str(count), "-p", str(spacing_ms), "-t", str(timeout_ms),
+            "-b", str(size), "-i", "5", "-B1", "-r0", *addrs]
 
 
-async def fping(addrs, family, count, s):
-    cmd = fping_cmd(addrs, family, count, s)
+async def fping(addrs, family, opts):
+    cmd = fping_cmd(addrs, family, *opts)
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, err = await proc.communicate()
@@ -66,29 +66,36 @@ class PingProbe(Probe):
     def available(self):
         return bool(shutil.which("fping"))
 
+    def size(self, series, s):
+        return series.target.get("packet_size") or s["ping_size"]
+
+    def opts(self, series, s):
+        """fping options of a series: targets with the same options share one fping process."""
+        return (self.count(series, s), self.spacing_ms(series, s), self.timeout_ms(series, s), self.size(series, s))
+
     async def run(self, series, s):
         groups = {}
         for x in series:
             if x.address:
-                groups.setdefault((x.family, self.count(x, s)), set()).add(x.address)
+                groups.setdefault((x.family, self.opts(x, s)), set()).add(x.address)
         jobs = list(groups.items())
-        outs = await asyncio.gather(*[fping(sorted(addrs), fam, cnt, s) for (fam, cnt), addrs in jobs],
+        outs = await asyncio.gather(*[fping(sorted(addrs), fam, opts) for (fam, opts), addrs in jobs],
                                     return_exceptions=True)
         by, failed, errors = {}, set(), []
-        for ((fam, cnt), _), res in zip(jobs, outs):
+        for ((fam, opts), _), res in zip(jobs, outs):
             if isinstance(res, Exception):
                 failed.add(fam)
                 errors.append(f"IPv{fam}: {res}")
                 continue
             for addr, r in res.items():
-                by[(fam, cnt, addr)] = r
+                by[(fam, opts, addr)] = r
         out = {}
         for x in series:
-            cnt = self.count(x, s)
+            cnt, opts = self.count(x, s), self.opts(x, s)
             if x.family in failed and x.address:
                 continue  # not measured: leave a gap
-            if x.address and (x.family, cnt, x.address) in by:
-                out[x.key] = by[(x.family, cnt, x.address)]
+            if x.address and (x.family, opts, x.address) in by:
+                out[x.key] = by[(x.family, opts, x.address)]
             else:
                 out[x.key] = Result(cnt, cnt, [])
         if errors:

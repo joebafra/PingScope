@@ -340,11 +340,19 @@ function famBox(t, f, range, big, onPick){
   box.appendChild(title);
   const cs = document.createElement('div'); cs.className = 'cstats';
   box.appendChild(chart(s.key, range, onPick, d => {
-    cs.innerHTML = classicStats(d);
+    cs.innerHTML = classicStats(d, probeLine(t));
     title.textContent = `${d.custom ? zoomLabel(d) : RANGES[range]} · IPv${f} · ${t.name}`;
   }));
   box.appendChild(cs);
   return box;
+}
+// like SmokePing: "20 ICMP Echo Pings (56 Bytes) every 60 seconds"
+function probeLine(t){
+  if (!t.pings) return '';
+  const every = `every ${S.data.interval} seconds`;
+  return t.probe === 'ping' ? `${t.pings} ICMP Echo Pings (${t.size} Bytes) ${every}`
+    : t.probe === 'dns' ? `${t.pings} DNS Queries ${every}`
+    : t.probe === 'tcp' ? `${t.pings} TCP Connects ${every}` : `${t.pings} probes ${every}`;
 }
 
 // ---------- target detail ----------
@@ -388,6 +396,7 @@ function viewTarget(tid){
         cv._onData = d => { classic?.(d); const x = chartStats(d);
           st.innerHTML = `<div>Avg median<b>${fmtMs(x.avg)}</b></div><div>Min<b>${fmtMs(x.min)}</b></div><div>Max<b>${fmtMs(x.max)}</b></div>` +
             `<div>Jitter<b>${fmtMs(x.jit)}</b></div><div>Loss<b style="color:${x.loss == null ? 'inherit' : lossColor(x.loss)}">${x.loss == null ? '–' : x.loss.toFixed(2) + '%'}</b></div>`; };
+        if (probeLine(t)) card.insertAdjacentHTML('beforeend', `<div class="pline">probe: ${esc(probeLine(t))}</div>`);
       }
       grid.appendChild(card);
     }

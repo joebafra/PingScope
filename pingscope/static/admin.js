@@ -309,7 +309,7 @@ const tdlg = $('#tdlg'), tform = $('#tform');
 let editing = null;
 function openTarget(t, gid){
   editing = t;
-  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, hide_address: false, note: '', group_id: gid};
+  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, hide_address: false, spacing_ms: null, timeout_ms: null, packet_size: null, start_offset: '', note: '', group_id: gid};
   $('#tdlgTitle').textContent = t ? 'Edit target' : 'Add target';
   tform.group_id.innerHTML = groupOptions(p.group_id);
   tform.probe.innerHTML = A.data.probes.map(x => `<option value="${x.name}">${esc(x.label)}</option>`).join('');
@@ -317,6 +317,13 @@ function openTarget(t, gid){
   tform.dns_type.innerHTML = A.data.dns_types.map(x => `<option>${x}</option>`).join('');
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
+  for (const k of ['spacing_ms', 'timeout_ms', 'packet_size']) tform[k].value = p[k] ?? '';
+  const offOpts = A.data.settings_schema.find(x => x.key === 'start_offset')?.options || [];
+  const offLabel = v => (offOpts.find(o => o[0] === v) || [, v])[1];
+  tform.start_offset.innerHTML = `<option value="">Same as Settings (${esc(offLabel(A.data.settings.start_offset).toLowerCase())})</option>` +
+    offOpts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
+  tform.start_offset.value = p.start_offset || '';
+  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'start_offset'].some(k => p[k] != null && p[k] !== '');
   tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
   tform.hide_address.checked = !!p.hide_address;
   const addrHelp = () => {
@@ -346,9 +353,25 @@ function probeChanged(){
   $('#portField').classList.toggle('hidden', !pr.fields.includes('port'));
   tform.port.placeholder = pr.default_port || '';
   const key = {ping: 'ping_count', dns: 'dns_count', tcp: 'tcp_count'}[pr.name];
-  tform.count.placeholder = key ? `default: ${A.data.settings[key]}` : '';
+  const st = A.data.settings;
+  tform.count.placeholder = key ? `default: ${st[key]}` : '';
+  tform.spacing_ms.placeholder = `default: ${st.probe_spacing_ms}`;
+  tform.timeout_ms.placeholder = `default: ${st.timeout_ms}`;
+  tform.packet_size.placeholder = `default: ${st.ping_size}`;
+  $('#sizeField').classList.toggle('hidden', pr.name !== 'ping');
+  probeSummary();
+}
+// one line with the settings this target is measured with, e.g. "20 × 56 bytes, 1000 ms apart, timeout 1500 ms, together"
+function probeSummary(){
+  const st = A.data.settings, pr = tform.probe.value, num = k => tform[k].value.trim();
+  const n = num('count') || st[{ping: 'ping_count', dns: 'dns_count', tcp: 'tcp_count'}[pr]];
+  const off = tform.start_offset.value || st.start_offset;
+  $('#probeOptsSum').textContent = `· ${n}${pr === 'ping' ? ` × ${num('packet_size') || st.ping_size} bytes` : ` ${pr === 'dns' ? 'queries' : 'connects'}`}, ` +
+    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms, ${off === 'random' ? 'spread' : 'together'}`;
 }
 tform.probe.onchange = probeChanged;
+$('#probeOpts').addEventListener('input', probeSummary);
+$('#probeOpts').addEventListener('change', probeSummary);
 function formData(){
   const fd = Object.fromEntries(new FormData(tform));
   fd.mtr = tform.mtr.checked; fd.enabled = tform.enabled.checked; fd.alert_skip = tform.alert_skip.checked; fd.hide_address = tform.hide_address.checked; fd.alert_chat_ids = pickedChats('#tgPick', tform.alert_chat_ids); fd.alert_rounds = tform.alert_rounds.value;

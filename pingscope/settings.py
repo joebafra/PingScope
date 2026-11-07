@@ -23,6 +23,12 @@ SCHEMA = {
     "probe_spacing_ms": (1000, int, "Measurements", "Spacing between probes (ms)",
                          "Time between two probes to the same target within a round.", 100, 10000),
     "timeout_ms": (1500, int, "Measurements", "Probe timeout (ms)", "A probe without reply within this time counts as lost.", 100, 10000),
+    "ping_size": (56, int, "Measurements", "Ping packet size (bytes)",
+                  "ICMP data bytes per ping, like SmokePing's packetsize. 56 gives an 84-byte IPv4 packet.", 12, 1452),
+    "start_offset": ("start", str, "Measurements", "When targets are measured",
+                     "Together: every target starts at the beginning of each round. Spread: every target gets its own "
+                     "fixed random moment in the round (like SmokePing's offset = random), so not everything is sent "
+                     "at once. Single targets can override this.", None, None),
     "resolve_interval": (300, int, "Measurements", "Hostname re-resolve interval (seconds)",
                          "How often A/AAAA records of hostname targets are looked up again.", 60, 86400),
 
@@ -76,6 +82,7 @@ DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 # Settings that only accept a fixed set of values: key -> [(value, label), ...]
 CHOICES = {
     "theme": [("modern", "Modern"), ("classic", "Classic (SmokePing-style)")],
+    "start_offset": [("start", "Together, at the start of each round"), ("random", "Spread over the round (random offset)")],
 }
 
 

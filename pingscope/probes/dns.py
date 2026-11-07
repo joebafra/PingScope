@@ -70,8 +70,9 @@ class DnsProbe(Probe):
             qname = t.get("dns_query") or "."
             qtype = t.get("dns_type") or ("NS" if qname == "." else "A")
             port = t.get("port") or 53
-            vals = await spaced(cnt, s["probe_spacing_ms"] / 1000,
-                                lambda: query_once(x.address, x.family, port, qname, qtype, s["timeout_ms"] / 1000))
+            timeout = self.timeout_ms(x, s) / 1000
+            vals = await spaced(cnt, self.spacing_ms(x, s) / 1000,
+                                lambda: query_once(x.address, x.family, port, qname, qtype, timeout))
             return x.key, to_result(vals)
 
         return dict(await asyncio.gather(*[measure(x) for x in series]))

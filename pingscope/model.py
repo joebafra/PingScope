@@ -8,6 +8,7 @@ FAMILY_MODES = {
     "ipv6": "IPv6 only",
 }
 DNS_TYPES = ["A", "AAAA", "NS", "SOA", "MX", "TXT", "CNAME", "PTR"]
+START_OFFSETS = ("", "start", "random")  # '' = the global "When targets are measured" setting
 
 _HOST_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.?$", re.I)
 
@@ -71,20 +72,25 @@ def clean_target(data, probes):
             err["alert_rounds"] = "must be a whole number from 1 to 60, or empty"
         else:
             t["alert_rounds"] = int(ar)
-    for k in ("port", "count"):
+    # optional numbers; None = use the global setting
+    limits = {"port": (1, 65535), "count": (1, 100), "spacing_ms": (100, 10000), "timeout_ms": (100, 10000),
+              "packet_size": (12, 1452)}
+    for k, (lo, hi) in limits.items():
         v = data.get(k)
         if v in (None, ""):
             t[k] = None
-        else:
-            try:
-                t[k] = int(v)
-            except (TypeError, ValueError):
-                err[k] = "must be a whole number"
-                t[k] = None
-    if t["port"] is not None and not 1 <= t["port"] <= 65535:
-        err["port"] = "must be between 1 and 65535"
-    if t["count"] is not None and not 1 <= t["count"] <= 100:
-        err["count"] = "must be between 1 and 100"
+            continue
+        try:
+            t[k] = int(v)
+        except (TypeError, ValueError):
+            err[k] = "must be a whole number"
+            t[k] = None
+            continue
+        if not lo <= t[k] <= hi:
+            err[k] = f"must be between {lo} and {hi}"
+    t["start_offset"] = str(data.get("start_offset") or "").strip().lower()
+    if t["start_offset"] not in START_OFFSETS:
+        err["start_offset"] = "must be empty (the setting), start or random"
 
     if t["probe"] not in probes:
         err["probe"] = f"unknown probe; choose one of {', '.join(probes)}"

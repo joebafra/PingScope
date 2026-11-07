@@ -340,11 +340,12 @@ const PS = (() => {
   const sortTargets = (list, mode) => mode === 'name' ? list.slice().sort(byName) : list;
 
   // SmokePing-style text legend under a graph (classic theme)
-  function classicStats(d){
+  function classicStats(d, probe){
     const x = chartStats(d), f = v => v == null ? '–' : fmtMs(v);
     return `<div>median rtt:&nbsp; <span><b>${f(x.avg)}</b> avg</span> <span><b>${f(x.medMax)}</b> max</span> <span><b>${f(x.medMin)}</b> min</span> <span><b>${f(x.now)}</b> now</span> <span><b>${f(x.sd)}</b> sd</span></div>` +
       `<div>packet loss: <b>${x.loss == null ? '–' : x.loss.toFixed(2) + ' %'}</b> avg</div>` +
-      `<div class="lc">loss color: ${LOSS.map(([, c, l]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>`;
+      `<div class="lc">loss color: ${LOSS.map(([, c, l]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>` +
+      (probe ? `<div>probe: ${esc(probe)}</div>` : '');
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,

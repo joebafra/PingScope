@@ -259,10 +259,15 @@ def tree(request: Request, _=Depends(can_view)):
         if t["group_id"] not in visible:
             continue
         addr = admin or _shows_address(t, by_id)
+        probe = PROBES.get(t["probe"])
         item = {
             "id": t["id"], "group_id": t["group_id"], "name": t["name"], "probe": t["probe"], "families": t["families"],
             "series": [_series_json(x, admin, addr) for x in collector.series.get(t["id"], [])],
+            # for the probe line under the graphs, like SmokePing's "20 ICMP Echo Pings (56 Bytes) every 60 seconds"
+            "pings": t["count"] or (s[probe.count_setting] if probe else None),
         }
+        if t["probe"] == "ping":
+            item["size"] = t["packet_size"] or s["ping_size"]
         if addr:  # the DNS query name is never shown on the dashboard, only in the admin edit form
             item.update(host=t["host"], host_v6=t["host_v6"],
                         port=t["port"] if t["probe"] != "ping" else None)
@@ -539,7 +544,7 @@ async def test_target(body: dict = Body(...)):
     t["id"] = 0
     s = store.settings()
     s = {**s, "probe_spacing_ms": 300}
-    t["count"] = 3
+    t["count"], t["spacing_ms"], t["start_offset"] = 3, None, "start"  # quick: 3 probes, 300 ms apart, right now
     series = await Resolver().plan([t], 0)
     results, errors = await measure(series, s)
     out = []

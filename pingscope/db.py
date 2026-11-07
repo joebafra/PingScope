@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS targets(
   port INTEGER, count INTEGER, mtr INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1,
   note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
   alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER,
-  hide_address INTEGER NOT NULL DEFAULT 0);
+  hide_address INTEGER NOT NULL DEFAULT 0, spacing_ms INTEGER, timeout_ms INTEGER, packet_size INTEGER,
+  start_offset TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -58,7 +59,7 @@ ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
                  "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds",
-                 "hide_address")
+                 "hide_address", "spacing_ms", "timeout_ms", "packet_size", "start_offset")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -145,6 +146,10 @@ class Store:
             self.c.execute("ALTER TABLE targets ADD COLUMN alert_rounds INTEGER")
         if "hide_address" not in tcols:  # 1 = never show this target's addresses to visitors
             self.c.execute("ALTER TABLE targets ADD COLUMN hide_address INTEGER NOT NULL DEFAULT 0")
+        for col, ddl in (("spacing_ms", "INTEGER"), ("timeout_ms", "INTEGER"), ("packet_size", "INTEGER"),
+                         ("start_offset", "TEXT NOT NULL DEFAULT ''")):  # per-target probe settings; NULL/'' = global
+            if col not in tcols:
+                self.c.execute(f"ALTER TABLE targets ADD COLUMN {col} {ddl}")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1"),

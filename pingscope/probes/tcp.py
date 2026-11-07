@@ -35,8 +35,8 @@ class TcpProbe(Probe):
             if not x.address:
                 return x.key, to_result([None] * cnt)
             port = x.target.get("port") or 443
-            vals = await spaced(cnt, s["probe_spacing_ms"] / 1000,
-                                lambda: connect_once(x.address, port, s["timeout_ms"] / 1000))
+            timeout = self.timeout_ms(x, s) / 1000
+            vals = await spaced(cnt, self.spacing_ms(x, s) / 1000, lambda: connect_once(x.address, port, timeout))
             return x.key, to_result(vals)
 
         return dict(await asyncio.gather(*[measure(x) for x in series]))

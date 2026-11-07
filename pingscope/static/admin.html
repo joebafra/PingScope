@@ -62,6 +62,9 @@ tr.off td{opacity:.5}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
 .hint-box{font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:-4px 0 12px}
 .testres{font-size:13px;margin-top:10px}
+.probeopts{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 0 12px;background:var(--panel2)}
+.probeopts summary{cursor:pointer;font-weight:600;font-size:13px}
+.probeopts[open] summary{margin-bottom:2px}
 .testres div{display:flex;gap:8px;align-items:center;padding:3px 0;font-variant-numeric:tabular-nums}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .chips button{font:inherit;font-size:12px;font-family:var(--mono);border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:14px;padding:2px 9px;cursor:pointer}
@@ -118,10 +121,19 @@ tr.off td{opacity:.5}
       <label class="field" data-f="dns_query"><span>Query name</span><input name="dns_query" placeholder="example.com" spellcheck="false"></label>
       <label class="field" data-f="dns_type"><span>Record type</span><select name="dns_type"></select></label>
     </div>
-    <div class="grid2">
-      <label class="field" data-f="port" id="portField"><span>Port</span><input name="port" type="number" min="1" max="65535"></label>
-      <label class="field" data-f="count"><span>Probes per round <span class="faint">(optional)</span></span><input name="count" type="number" min="1" max="100"></label>
-    </div>
+    <label class="field" data-f="port" id="portField"><span>Port</span><input name="port" type="number" min="1" max="65535" style="width:140px"></label>
+    <details class="probeopts" id="probeOpts">
+      <summary>Probe settings <span class="muted small" id="probeOptsSum"></span></summary>
+      <div class="help" style="margin:6px 0 10px">Leave a field empty to use the setting from Admin → Settings → Measurements.</div>
+      <div class="grid2">
+        <label class="field" data-f="count"><span>Probes per round</span><input name="count" type="number" min="1" max="100"></label>
+        <label class="field" data-f="spacing_ms"><span>Spacing between probes (ms)</span><input name="spacing_ms" type="number" min="100" max="10000"></label>
+        <label class="field" data-f="timeout_ms"><span>Timeout (ms)</span><input name="timeout_ms" type="number" min="100" max="10000"></label>
+        <label class="field" data-f="packet_size" id="sizeField"><span>Packet size (bytes)</span><input name="packet_size" type="number" min="12" max="1452"></label>
+      </div>
+      <label class="field" data-f="start_offset"><span>When to measure</span><select name="start_offset"></select>
+        <div class="help">Spread gives this target its own fixed random moment in each round, like SmokePing's offset = random, so not every target is sent at once.</div></label>
+    </details>
     <label class="check"><input type="checkbox" name="mtr"> <span>Run mtr traceroutes for this target</span></label>
     <label class="check"><input type="checkbox" name="enabled"> <span>Enabled</span></label>
     <label class="check"><input type="checkbox" name="hide_address"> <span>Don't show this target's addresses to visitors <span class="muted small" id="hideAddrHelp"></span></span></label>
