@@ -86,7 +86,7 @@ Then run the same `docker run` command as in the quick start. To update automati
 | Tag | What it is |
 |---|---|
 | `latest` | The newest version on the `main` branch |
-| `1.0.0-beta`, … | A release |
+| `0.011`, `0.012`, … | A release ([changelog](https://github.com/joebafra/PingScope/blob/main/CHANGELOG.md)) |
 | `sha-<commit>` | One exact commit |
 
 Images are built for `linux/amd64` and `linux/arm64`.

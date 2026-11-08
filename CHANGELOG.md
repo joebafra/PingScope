@@ -1,0 +1,45 @@
+# Changelog
+
+All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
+
+## 0.011 — 2026-11-08
+
+### Added
+
+- **Per-target probe settings** (*Edit target → Probe settings*): probes per round, spacing, timeout and ping packet size. Empty uses the setting from *Admin → Settings → Measurements*.
+- **When targets are measured**: together at the start of each round (default), or spread over the round so not everything is sent at once (like SmokePing's `offset = random`). Set for all targets, overridable per target.
+- **Ping packet size** setting (default 56 bytes, like SmokePing's `packetsize`).
+- **Probe line under the graphs**, like SmokePing: *probe: 20 ICMP Echo Pings (56 Bytes) every 60 seconds*.
+- **SmokePing import** reads the `*** Probes ***` section: a probe such as `++ FPingGateway` passes its `pings`, `packetsize`, `timeout`, `hostinterval` and `offset = random` on to the targets that use it.
+- **More periods**: last hour, 6 hours and 12 hours. Choose which periods are offered in *Settings → Periods*. A target page shows all periods; with one IP family selected they sit in two columns, like SmokePing's target page.
+- **Time zone setting**: times in each visitor's own time zone, or the server's time zone for everyone. Fixes graphs that looked an hour off in browsers that report UTC for privacy.
+- **Pushover notifications** next to Telegram and email, with a switch per group.
+- **Version and commit** of the running build next to "Powered by PingScope" and under *Admin → Settings → Status*.
+- **Light / dark / system switch** in the header of the dashboard and the admin panel.
+- **Show IP addresses to visitors**, per group (off by default), with an opt-out per target.
+- **Copy button** next to addresses on the dashboard.
+- **Docker image on Docker Hub** ([`joebafra/pingscope`](https://hub.docker.com/r/joebafra/pingscope)) for amd64 and arm64, built automatically from `main`.
+
+### Changed
+
+- **Graph axes and grid**, like SmokePing: round Y steps (1, 2 or 5 × 10ⁿ ms) with as many lines as fit, time ticks on round times (00:00, Mondays, the 1st of a month) and vertical grid lines.
+- **Median line**, like SmokePing: coloured levels per measurement with thin grey steps between them, instead of separate thick blocks.
+- Group cards with one graph show IPv4/IPv6 and the current value in the title row; more space under the group subtitle.
+- Version numbering: 0.011 instead of 1.0.0-beta.
+
+### Fixed
+
+- The "Send test alert" button text ran outside its box.
+- The Docker image no longer contains build provenance with the e-mail address of the person who pushed.
+
+## 0.010 — 2026-11-06
+
+First public release (published as `v1.0.0-beta`).
+
+- Ping (fping), DNS and TCP probes, IPv4 and IPv6 side by side.
+- SmokePing-style graphs with a synced crosshair, drag-to-zoom and click-for-traceroute.
+- mtr traceroutes, every minute during problems.
+- Alerts by Telegram and email per group, with a preview, extra chats for customers and an alert history.
+- Admin panel with nested groups, hidden groups, Admin and Viewer accounts, SmokePing import and JSON export.
+- Public dashboard without hostnames or IP addresses; Modern and Classic styles.
+- One-command install with Docker Compose, Let's Encrypt HTTPS and automatic updates with backup and rollback.

@@ -1,7 +1,7 @@
 # Builds the PingScope image for amd64 and arm64 and publishes it on Docker Hub.
 #
 #   push to main      → <user>/pingscope:latest  (+ sha-<commit>)
-#   tag v1.2.3        → <user>/pingscope:1.2.3   (+ sha-<commit>)
+#   tag v0.012        → <user>/pingscope:0.012   (+ sha-<commit>)
 #   pull request      → build only, nothing is pushed
 #
 # Setup (once): GitHub → Settings → Secrets and variables → Actions
@@ -63,7 +63,7 @@ jobs:
           flavor: latest=false
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
+            type=match,pattern=v(.*),group=1   # tag v0.012 -> image 0.012 (not semver, so no type=semver)
             type=sha,format=short
           labels: |
             org.opencontainers.image.title=PingScope

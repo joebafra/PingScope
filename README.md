@@ -45,6 +45,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - [Security and privacy](#security-and-privacy)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 
 ## Why PingScope
@@ -116,7 +117,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Two styles:** *Modern* (default, with light and dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
 - **Your own branding:** site title and welcome text.
 - **Time zone:** times follow each visitor's browser, or the server's time zone for everyone (*Settings → Time zone*). Handy when browsers report UTC because of privacy settings.
-- The **version** and commit of the running build in the footer, for example *PingScope 1.0.0-beta · 7a91fea*.
+- The **version** and commit of the running build in the footer, for example *PingScope 0.011 · 7a91fea*. What changed per version is in [CHANGELOG.md](CHANGELOG.md).
 - Works on phones: the menu becomes a drawer and tables collapse.
 
 ### Traceroutes (mtr)
@@ -210,7 +211,7 @@ docker logs pingscope 2>&1 | grep "setup code"
 
 Then open `http://<server-ip>:8080/admin`: plain HTTP by IP address works out of the box, no hostname or certificate needed. Use that on a trusted network (LAN, VPN) only, because the login isn't encrypted; for HTTPS use the installer above or your own reverse proxy with `PINGSCOPE_LISTEN=127.0.0.1`.
 
-Host networking lets PingScope measure with the machine's own IPv4 and IPv6 (this needs a Linux Docker host), and `NET_RAW` is needed for ping and mtr. Tags: `latest` (newest on `main`), a version such as `1.0.0-beta` for each release, and `sha-<commit>`. More on the [Docker Hub page](https://hub.docker.com/r/joebafra/pingscope).
+Host networking lets PingScope measure with the machine's own IPv4 and IPv6 (this needs a Linux Docker host), and `NET_RAW` is needed for ping and mtr. Tags: `latest` (newest on `main`), a version such as `0.011` for each release, and `sha-<commit>`. More on the [Docker Hub page](https://hub.docker.com/r/joebafra/pingscope).
 
 To update, fetch the new image and recreate the container (`docker compose pull && docker compose up -d`, or `docker pull joebafra/pingscope:latest`, `docker rm -f pingscope` and the same `docker run` again). Your data in the volume is kept. Every change on GitHub is published as a new `latest` within a few minutes.
 
@@ -461,6 +462,10 @@ More in the [install guide](docs/INSTALL.md#8-troubleshooting).
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run PingScope locally and what to keep in mind.
+
+## Changelog
+
+What changed in each version: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

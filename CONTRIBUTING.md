@@ -46,6 +46,14 @@ Or run the full stack with Docker: `docker compose up -d --build`.
 - **UI text** is in English and explains what a setting does in plain words.
 - **Commits** have a short subject that says what changed for the user, and a body that explains why.
 
+## Versions and the changelog
+
+Versions are numbered 0.010, 0.011, 0.012 and so on. For a new version:
+
+1. Set `__version__` in `pingscope/__init__.py`.
+2. Add a section at the top of [CHANGELOG.md](CHANGELOG.md): *Added*, *Changed*, *Fixed*.
+3. After merging to `main`, publish a GitHub release with tag `v0.012`. The Docker image then also gets the tag `0.012`.
+
 ## Before you open a pull request
 
 There is no automated test suite yet, so please check by hand:

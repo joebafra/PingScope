@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-__version__ = "1.0.0-beta"
+__version__ = "0.011"  # also add a section to CHANGELOG.md for every new version
 
 
 def _commit():
