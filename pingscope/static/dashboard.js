@@ -513,6 +513,7 @@ async function refresh(first){
       requestAnimationFrame(() => $$('canvas.chart').forEach(c => draw(c)));
     }
     $('#siteTitle').textContent = d.site.title;
+    $('#ver').innerHTML = esc(d.version || '') + (d.commit ? ` · <a href="https://github.com/joebafra/PingScope/commit/${esc(d.commit)}" target="_blank" rel="noopener noreferrer" title="Commit of the running version">${esc(d.commit)}</a>` : '');
     $('#status').textContent = d.last_run ? 'updated ' + ago(d.last_run) : 'waiting for first round…';
     $('#adminLink').textContent = d.can_edit ? 'Admin' : d.logged_in ? 'Account' : 'Log in';
     const sig = d.targets.map(t => t.id + ':' + t.series.map(s => s.key + (s.address || '')).join(',')).join('|') + '#' + d.groups.map(g => g.id + g.name + g.parent_id).join(',');

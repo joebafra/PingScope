@@ -6,8 +6,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY pingscope ./pingscope
 COPY examples ./examples
+# git commit of this build, shown next to the version on the dashboard (set by the GitHub workflow and deploy.sh)
+ARG PINGSCOPE_COMMIT=""
 ENV PINGSCOPE_DB=/data/pingscope.db \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PINGSCOPE_COMMIT=$PINGSCOPE_COMMIT
 VOLUME /data
 EXPOSE 8080
 # tini as PID 1 reaps orphaned child processes (e.g. mtr-packet); without it they pile up as zombies

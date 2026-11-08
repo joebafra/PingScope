@@ -2,7 +2,10 @@
 # Settings come from .env (see .env.example, or run ./install.sh).
 services:
   pingscope:
-    build: .
+    build:
+      context: .
+      args:
+        PINGSCOPE_COMMIT: ${PINGSCOPE_COMMIT:-}   # set by deploy.sh / install.sh: shown next to the version
     image: pingscope:latest
     container_name: pingscope
     restart: unless-stopped

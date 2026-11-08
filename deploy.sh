@@ -97,7 +97,7 @@ ls -1t data/backups/pre-deploy-*.db 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1))
 
 start() {
   if [ "$MODE" = docker ]; then
-    docker compose up -d --build --remove-orphans 9>&-
+    PINGSCOPE_COMMIT="$(git rev-parse --short HEAD)" docker compose up -d --build --remove-orphans 9>&-
   else
     "$DIR/venv/bin/pip" install -q -r requirements.txt 9>&-
     systemctl restart pingscope 9>&-

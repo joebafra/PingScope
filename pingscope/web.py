@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Req
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, alerts as alerts_mod, importer, settings as settings_mod
+from . import __commit__, __version__, alerts as alerts_mod, importer, settings as settings_mod
 from .collector import Collector, measure
 from .db import Store
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
@@ -166,7 +166,7 @@ def admin_page():
 def session(request: Request):
     s = store.settings()
     return {"user": current_user(request), "setup_required": store.user_count() == 0,
-            "public": s["public_dashboard"], "site_title": s["site_title"], "version": __version__}
+            "public": s["public_dashboard"], "site_title": s["site_title"], "version": __version__, "commit": __commit__}
 
 
 @app.post("/api/login")
@@ -280,6 +280,7 @@ def tree(request: Request, _=Depends(can_view)):
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
         "mtr": bool(s["mtr_enabled"] and collector.mtr.available), "mtr_interval": s["mtr_interval"],
         "logged_in": admin, "can_edit": bool(user and user["role"] == "admin"),
+        "version": __version__, "commit": __commit__,
         "active_alerts": sum(1 for a in store.open_alerts() if a["target_id"] in shown_ids),
     }
 
