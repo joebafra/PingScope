@@ -37,12 +37,10 @@ const PS = (() => {
   // Times are shown in the visitor's own time zone, or in the server's (Admin → Settings → Time zone): TZ is then
   // an IANA name like "Europe/Amsterdam".
   let TZ;
-  const setTimeZone = z => { TZ = z || undefined; };
+  const setTimeZone = z => { if ((z || undefined) !== TZ){ TZ = z || undefined; tzFmt = null; } };
   const fmtTime = (t, o) => new Date(t * 1000).toLocaleString(LOCALE, TZ ? {...o, timeZone: TZ} : o);
   const fmtDT = t => fmtTime(t, {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const fmtShort = t => fmtTime(t, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
-  const fmtAxis = (t, span) => fmtTime(t,
-    span <= 2 * 86400 ? {hour:'2-digit', minute:'2-digit'} : span <= 40 * 86400 ? {day:'numeric', month:'short'} : {month:'short', year:'2-digit'});
   function ago(t){
     if (!t) return 'never';
     const s = Math.max(0, Math.round(Date.now() / 1000 - t));
@@ -65,26 +63,57 @@ const PS = (() => {
 
   // ---- chart ----
   const med = q => { const k = q.length; return k % 2 ? q[k >> 1] : (q[k / 2 - 1] + q[k / 2]) / 2; };
-  function niceCeil(v){ if (!(v > 0)) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1,2,2.5,5,10]) if (m * e >= v) return m * e; return 10 * e; }
+  // smallest 1, 2 or 5 × 10^n that is at least v (round steps, like SmokePing's axis)
+  function niceStep(v){ if (!(v > 0)) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 5, 10]) if (m * e >= v * (1 - 1e-9)) return m * e; return 10 * e; }
 
-  // Y axis, in 4 even, round steps. The top follows the bulk of the pings (90th percentile per bucket),
-  // so a few spikes don't squash the graph; they are cut off at the top, like SmokePing does.
-  // The axis starts at 0, unless every value sits high above it (a steady 8 ms line): then it starts
-  // just below the data, so the graph isn't mostly empty space.
-  function yRange(d){
+  // Y axis in round steps (1, 2, 5 × 10^n ms), as many grid lines as fit the graph's height. The top follows the
+  // bulk of the pings (90th percentile per bucket), so a few spikes don't squash the graph; they are cut off at the
+  // top, like SmokePing does. The axis starts at 0, unless every value sits high above it (a steady 8 ms line):
+  // then it starts just below the data, so the graph isn't mostly empty space.
+  function yRange(d, ph){
     const pts = d.points.filter(p => p.q.length), pick = (a, f) => a[Math.min(a.length - 1, Math.floor(a.length * f))];
-    if (!pts.length) return {ymin: 0, ymax: 10};
-    const his = pts.map(p => pick(p.q, .9)).sort((a, b) => a - b), lows = pts.map(p => p.q[0]).sort((a, b) => a - b);
-    const hi = Math.max(pick(his, .95), 0.01), lo = pick(lows, .05);
-    let step = niceCeil(hi * 1.15 / 4);
-    if (lo > hi * .6){
-      const range = Math.max(hi - lo, hi * .2);
-      for (step = niceCeil(range * 1.3 / 4); ; step = niceCeil(step * 1.01)){
-        const ymin = Math.max(0, Math.floor((lo - range * .15) / step) * step);
-        if (ymin + 4 * step >= hi * 1.1) return {ymin, ymax: ymin + 4 * step};
-      }
+    const lines = Math.max(3, Math.min(10, Math.floor(ph / 18)));
+    let top = 10, bottom = 0;
+    if (pts.length){
+      const his = pts.map(p => pick(p.q, .9)).sort((a, b) => a - b), lows = pts.map(p => p.q[0]).sort((a, b) => a - b);
+      const hi = Math.max(pick(his, .95), 0.01), lo = pick(lows, .05);
+      top = hi * 1.12;
+      if (lo > hi * .6){ const range = Math.max(hi - lo, hi * .2); bottom = Math.max(0, lo - range * .15); }
     }
-    return {ymin: 0, ymax: 4 * step};
+    for (let step = niceStep((top - bottom) / lines); ; step = niceStep(step * 1.01)){
+      const ymin = Math.floor(bottom / step + 1e-9) * step, ymax = Math.max(ymin + step, Math.ceil(top / step - 1e-9) * step);
+      if ((ymax - ymin) / step <= lines + 1) return {ymin, ymax, step};
+    }
+  }
+  const fmtTick = (v, step) => `${v.toFixed(Math.max(0, -Math.floor(Math.log10(step) + 1e-9)))} ms`;
+
+  // X axis: ticks on round wall-clock times (00:00, 06:00, Mondays, the 1st of a month) in the shown time zone
+  let tzFmt = null;
+  function tzOffset(t){  // seconds the shown time zone is ahead of UTC at time t
+    if (!TZ) return -new Date(t * 1000).getTimezoneOffset() * 60;
+    tzFmt = tzFmt || new Intl.DateTimeFormat('en-GB', {timeZone: TZ, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric'});
+    const p = Object.fromEntries(tzFmt.formatToParts(new Date(t * 1000)).map(x => [x.type, x.value]));
+    return Date.UTC(+p.year, p.month - 1, +p.day, +p.hour % 24, +p.minute) / 1000 - Math.floor(t / 60) * 60;
+  }
+  const DAY = 86400, TSTEPS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, DAY, 2 * DAY, 7 * DAY];
+  function timeTicks(start, end, maxTicks){
+    const span = end - start, step = TSTEPS.find(s => span / s <= maxTicks), ticks = [];
+    if (step){
+      const off = tzOffset(start), base = step === 7 * DAY ? 4 * DAY : 0;  // weeks start on Monday (1 Jan 1970 was a Thursday)
+      for (let t = Math.ceil((start + off - base) / step) * step + base - off; t <= end; t += step) ticks.push(t);
+      const label = step < DAY ? (t => span > DAY && (t + tzOffset(t)) % DAY === 0 ? fmtTime(t, {weekday: 'short', day: 'numeric'}) : fmtTime(t, {hour: '2-digit', minute: '2-digit'}))
+        : (t => fmtTime(t, {day: 'numeric', month: 'short'}));
+      return ticks.map(t => [t, label(t)]);
+    }
+    const months = [1, 2, 3, 6, 12].find(m => span / (m * 30.4 * DAY) <= maxTicks) || 12;
+    const s0 = new Date((start + tzOffset(start)) * 1000);
+    for (let y = s0.getUTCFullYear(), m = s0.getUTCMonth() + 1; ; m += 1){
+      const wall = Date.UTC(y, m, 1) / 1000, t = wall - tzOffset(wall);
+      if (t > end) break;
+      const mm = new Date(wall * 1000).getUTCMonth();
+      if (t >= start && mm % months === 0) ticks.push([t, fmtTime(t, mm === 0 ? {month: 'short', year: 'numeric'} : {month: 'short'})]);
+    }
+    return ticks;
   }
 
   // draw = graph (kept as a bitmap in cv._base) + overlay (crosshair, zoom selection) on top
@@ -153,20 +182,25 @@ const PS = (() => {
     c.font = v('--chart-font') || '10px system-ui,sans-serif';
     if (!d){ c.fillStyle = v('--faint'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('Loading…', W / 2, H / 2); return; }
     const L = 50, R = 8, T = 8, B = 18, pw = W - L - R, ph = H - T - B, span = d.end - d.start;
-    const {ymin, ymax} = yRange(d);
+    const {ymin, ymax, step: ystep} = yRange(d, ph);
     const X = t => L + (t - d.start) / span * pw, Y = ms => T + ph - (Math.min(Math.max(ms, ymin), ymax) - ymin) / (ymax - ymin) * ph;
     cv._g = {L, pw, span, T, ph, Y};
     const plotBg = v('--plot-bg'), axis = v('--axis'), dash = v('--grid-dash');
     if (plotBg){ c.fillStyle = plotBg; c.fillRect(L, T, pw, ph); }
+    // grid: a horizontal line per Y step and a vertical line per time tick, so the plot gets grid squares
+    const ticks = timeTicks(d.start, d.end, Math.max(2, Math.floor(pw / 72)));
     c.lineWidth = 1; c.strokeStyle = v('--chart-grid') || v('--grid'); c.fillStyle = v('--muted');
-    c.textAlign = 'right'; c.textBaseline = 'middle';
     c.setLineDash(dash ? dash.split(/\s+/).map(Number) : []);
-    for (let i = 0; i <= 4; i++){ const ms = ymin + (ymax - ymin) * i / 4, y = Math.round(Y(ms)) + .5; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke(); c.fillText(fmtMs(ms), L - 6, y); }
+    c.beginPath();
+    for (let ms = ymin; ms <= ymax + ystep / 2; ms += ystep){ const y = Math.round(Y(ms)) + .5; c.moveTo(L, y); c.lineTo(W - R, y); }
+    for (const [t] of ticks){ const x = Math.round(X(t)) + .5; c.moveTo(x, T); c.lineTo(x, T + ph); }
+    c.stroke();
     c.setLineDash([]);
     if (axis){ c.strokeStyle = axis; c.beginPath(); c.moveTo(L + .5, T); c.lineTo(L + .5, T + ph + .5); c.lineTo(W - R, T + ph + .5); c.stroke(); }
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (let ms = ymin; ms <= ymax + ystep / 2; ms += ystep) c.fillText(fmtTick(ms, ystep), L - 6, Math.round(Y(ms)) + .5);
     c.textAlign = 'center'; c.textBaseline = 'top';
-    const nx = W < 380 ? 3 : 5;
-    for (let i = 0; i < nx; i++){ const f = i / (nx - 1), x = L + pw * f; c.fillText(fmtAxis(d.start + span * f, span), Math.min(Math.max(x, L + 20), W - R - 20), T + ph + 5); }
+    for (const [t, label] of ticks){ const w = c.measureText(label).width / 2; c.fillText(label, Math.min(Math.max(X(t), L + w), W - R - w), T + ph + 5); }
     if (!d.points.length){ c.fillStyle = v('--faint'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('No data yet', L + pw / 2, T + ph / 2); return; }
     const bw = Math.max(1, pw * d.step / span), smoke = v('--smoke');
     // 1) smoke: spread of all probes, darker towards the median
