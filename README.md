@@ -27,7 +27,7 @@
 
 ![PingScope overview: every target with its current IPv4 and IPv6 latency and packet loss](docs/screenshots/overview.png)
 
-PingScope measures round-trip time and packet loss to your routers, customers, DNS servers and websites every minute, over **IPv4 and IPv6 side by side**. It draws SmokePing-style "smoke" graphs, runs **mtr traceroutes** automatically when something goes wrong, and sends **alerts by Telegram and email**. Everything is configured in a web admin panel: no config files to edit, no restarts.
+PingScope measures round-trip time and packet loss to your routers, customers, DNS servers and websites every minute, over **IPv4 and IPv6 side by side**. It draws SmokePing-style "smoke" graphs, runs **mtr traceroutes** automatically when something goes wrong, and sends **alerts by Telegram, Pushover and email**. Everything is configured in a web admin panel: no config files to edit, no restarts.
 
 It is a single small Python service with a SQLite database. Install it on a Linux server with one script, and it gets its own **Let's Encrypt HTTPS certificate** and **automatic updates** from GitHub.
 
@@ -57,7 +57,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 | IPv6 | A separate target per family (`FPing6`) | One target, IPv4 and IPv6 graphs next to each other; A/AAAA lookups and IPv6 suggestions |
 | Configuration | Text config file, reload to apply | Web admin panel; changes apply within a round |
 | Traceroutes | Not included | mtr every 15 minutes, every minute during problems, linked from the graphs |
-| Alerts | Pattern-based alerts by mail or script | Telegram and email per group, with a preview of how many alerts you would get |
+| Alerts | Pattern-based alerts by mail or script | Telegram, Pushover and email per group, with a preview of how many alerts you would get |
 | Visitors | One view for everyone | Public dashboard without hostnames or IP addresses (or with them, per group); hidden groups; Admin and Viewer accounts |
 | Migration | | Imports your SmokePing `Targets` file |
 
@@ -98,11 +98,11 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 ### SmokePing-style graphs
 
 - **Grey "smoke"** shows the spread of all probes in a round; the **median line** changes colour with packet loss, using the SmokePing loss colours (0%, ≤5%, ≤10%, ≤25%, ≤50%, >50%, 100%).
-- **Periods:** last 3 hours, day, week, month and year. On a target page the period you picked comes first, the others follow below it.
+- **Periods:** last hour, 3, 6 and 12 hours, day, week, month and year; choose which ones are offered in *Settings → Periods*. A target page shows every period, the one you picked first: with one IP family selected (IPv4 or IPv6 in the header) in two columns like SmokePing's target page, with both families IPv4 and IPv6 next to each other per period.
 - **Synced crosshair:** hover over a graph and a dashed line shows the same moment on every visible graph (IPv4 and IPv6 together), with a tooltip: median, min, max and loss of that round.
 - **Drag to zoom:** drag across a graph to zoom all graphs of that period into the selected time. Double-click or *Reset zoom* to go back. Zoomed graphs use full-resolution data where available.
 - **Click a point** in a graph to open the traceroute closest to that moment.
-- **A tight Y axis:** the top follows the bulk of the pings instead of the single highest spike, and a steady 8 ms line doesn't start at 0, so graphs aren't mostly empty space.
+- **Readable axes and a grid**, like SmokePing: the Y axis in round steps (1, 2 or 5 × 10ⁿ ms) with as many lines as fit, the time axis marked at round times (00:00, 06:00, Mondays, the 1st of a month), and grid lines for both. The top follows the bulk of the pings instead of the single highest spike, and a steady 8 ms line doesn't start at 0, so graphs aren't mostly empty space.
 - Under every graph: **average median, min, max, jitter and loss** for that period, and the probe used, like SmokePing: *probe: 20 ICMP Echo Pings (56 Bytes) every 60 seconds*.
 
 ### Dashboard
@@ -115,6 +115,8 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Light, dark or system:** a switch in the header lets every visitor pick light, dark or "follow the system"; the choice is remembered in their browser and also applies to the admin panel.
 - **Two styles:** *Modern* (default, with light and dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
 - **Your own branding:** site title and welcome text.
+- **Time zone:** times follow each visitor's browser, or the server's time zone for everyone (*Settings → Time zone*). Handy when browsers report UTC because of privacy settings.
+- The **version** and commit of the running build in the footer, for example *PingScope 1.0.0-beta · 7a91fea*.
 - Works on phones: the menu becomes a drawer and tables collapse.
 
 ### Traceroutes (mtr)
@@ -125,10 +127,10 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - Filter on **problems only**, load older reports, or click a point in a graph to jump to the nearest report.
 - A limit on parallel mtr processes keeps the server responsive during a large outage. History is kept for 30 days.
 
-### Alerts: Telegram and email
+### Alerts: Telegram, Pushover and email
 
 - Notifications are set **per group** (subgroups can follow their parent): alert at a **packet-loss threshold** (for example 10% or more), when a target is **down** (no replies at all), or both.
-- Delivery by **Telegram** (your own bot) and/or **email** via [Lettermint](https://lettermint.co). Either can be switched on per group.
+- Delivery by **Telegram** (your own bot), **[Pushover](https://pushover.net)** and/or **email** via [Lettermint](https://lettermint.co). Each can be switched on per group.
 - **No alert storms:** a problem must last *N* rounds in a row before an alert starts (default 3), and *N* good rounds before it counts as resolved. *N* can be set per group and overridden per target (1 for a critical link, 5 for a flaky one).
 - Everything that starts, gets worse or ends in the **same round goes out in one message**, so a large outage sends one message instead of hundreds.
 - Optional **"resolved"** messages and **reminders** every *X* hours while a problem lasts.
@@ -188,7 +190,7 @@ The installer asks for your hostname and email, sets up Docker, the **Let's Encr
 
 - Full guide, including installing without Docker and using another reverse proxy: **[docs/INSTALL.md](docs/INSTALL.md)**
 - HTTPS details and changing the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**
-- Telegram and email: **[Notifications](docs/INSTALL.md#4a-notifications-telegram-and-email)**
+- Telegram, Pushover and email: **[Notifications](docs/INSTALL.md#4a-notifications-telegram-pushover-and-email)**
 - Updates, backups and useful commands: **[section 5](docs/INSTALL.md#5-updating-backups-and-useful-commands)**
 
 ### Docker image
@@ -249,6 +251,8 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Site title | `PingScope` | | Shown in the header and browser tab. |
 | Welcome text | | | Shown at the top of the overview page. |
 | Dashboard style | Modern | | *Modern* follows the visitor's light/dark preference; *Classic* is SmokePing-style. |
+| Periods | 3h, day, week, month, year | | Which of 1h, 3h, 6h, 12h, day, week, month and year are offered in the header and shown on a target page. |
+| Time zone of the times shown | Visitor | | *Visitor*: each browser's own time zone. *Server*: the server's `TZ` for everyone, like SmokePing. |
 | Public dashboard | on | | Allow viewing graphs without logging in. The admin panel always requires a login. |
 | Show traceroute hops to visitors | off | | Show the router addresses along the path in mtr reports. Target hostnames and addresses are only shown in groups set to show them. |
 
@@ -293,11 +297,13 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Lettermint API token | | | Stored on the server and never shown again. `LETTERMINT_TOKEN` takes priority. |
 | Telegram bot token | | | From [@BotFather](https://t.me/BotFather). Stored on the server and never shown again. `TELEGRAM_BOT_TOKEN` takes priority. |
 | Telegram chat IDs | | | Default chats for all alerts, comma-separated. Use *Admin → Alerts → Find chat IDs*. |
+| Pushover application token | | | From pushover.net → *Create an Application/API Token*. Stored on the server and never shown again. `PUSHOVER_TOKEN` takes priority. |
+| Pushover user or group keys | | | Where Pushover alerts go, comma-separated. |
 | Rounds in a row before alerting | 3 | 1–60 | How long a problem must last before an alert, and how long it must be fine before it's resolved. Groups and targets can override it. |
 | Notify when resolved | on | | Also send a message when a target is fine again. |
 | Reminder while still down | 0 h | 0–168 | Repeat the alert every this many hours while it lasts. 0 = never. |
 
-Per **group** you set notifications (on / off / same as the parent group), the loss threshold, alert when down, Telegram and email switches, rounds in a row, and extra Telegram chats. Per **target** you can skip alerts, override rounds in a row and add extra chats.
+Per **group** you set notifications (on / off / same as the parent group), the loss threshold, alert when down, Telegram, Pushover and email switches, rounds in a row, and extra Telegram chats. Per **target** you can skip alerts, override rounds in a row and add extra chats.
 
 ### Server settings (`.env`)
 
@@ -314,6 +320,7 @@ Per **group** you set notifications (on / off / same as the parent group), the l
 | `PINGSCOPE_DB` | `/data/pingscope.db` | Database file (`data/pingscope.db` when run from source). |
 | `TZ` | `Europe/Amsterdam` | Time zone for log lines and alert messages. |
 | `TELEGRAM_BOT_TOKEN` | | Telegram bot token, instead of entering it in the admin panel. |
+| `PUSHOVER_TOKEN` | | Pushover application token, instead of entering it in the admin panel. |
 | `LETTERMINT_TOKEN` | | Lettermint API token, instead of entering it in the admin panel. |
 
 For `deploy.sh` (set them in the systemd service): `PINGSCOPE_BRANCH` (branch to deploy, default `main`), `PINGSCOPE_KEEP_BACKUPS` (default 5) and `PINGSCOPE_HEALTH_TIMEOUT` (seconds, default 120).
@@ -348,7 +355,7 @@ For `deploy.sh` (set them in the systemd service): `PINGSCOPE_BRANCH` (branch to
 | Measurements | [fping](https://fping.org/) for ICMP, built-in async DNS and TCP probes, [mtr](https://github.com/traviscross/mtr) for traceroutes |
 | Frontend | Plain HTML, CSS and JavaScript with canvas graphs |
 | HTTPS | [Caddy](https://caddyserver.com/) with automatic Let's Encrypt certificates |
-| Alerts | Telegram Bot API, [Lettermint](https://lettermint.co) for email |
+| Alerts | Telegram Bot API, [Pushover](https://pushover.net), [Lettermint](https://lettermint.co) for email |
 | Deployment | Docker Compose (or systemd without Docker), systemd timer for updates |
 
 The only Python dependencies are `fastapi` and `uvicorn`.
@@ -363,7 +370,7 @@ pingscope/
   resolver.py      targets → series per address family (A/AAAA lookups)
   probes/          probe plugins: ping.py (fping), dns.py, tcp.py
   mtr.py           traceroute scheduler
-  alerts.py        alert state, group preview, Telegram and email
+  alerts.py        alert state, group preview, Telegram, Pushover and email
   db.py            SQLite storage, hourly roll-up
   importer.py      SmokePing and JSON import, JSON export
   settings.py      settings schema (defaults, ranges, help texts)

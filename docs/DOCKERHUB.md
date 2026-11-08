@@ -4,13 +4,13 @@
 
 ![PingScope overview](https://raw.githubusercontent.com/joebafra/PingScope/main/docs/screenshots/overview.png)
 
-PingScope measures round-trip time and packet loss to your routers, customers, DNS servers and websites every minute, over **IPv4 and IPv6 side by side**. It draws SmokePing-style "smoke" graphs, runs **mtr traceroutes** when something goes wrong, and sends **alerts by Telegram and email**. Everything is configured in the browser.
+PingScope measures round-trip time and packet loss to your routers, customers, DNS servers and websites every minute, over **IPv4 and IPv6 side by side**. It draws SmokePing-style "smoke" graphs, runs **mtr traceroutes** when something goes wrong, and sends **alerts by Telegram, Pushover and email**. Everything is configured in the browser.
 
 - **Probes:** ping (fping), DNS query time, TCP connect time
 - **IPv4 + IPv6** graphs next to each other, with A/AAAA lookups and IPv6 suggestions
 - **SmokePing-style graphs** from 3 hours to a year, with crosshair, drag-to-zoom and click-for-traceroute
 - **mtr traceroutes** every 15 minutes, every minute during problems
-- **Alerts** by Telegram and email per group, with a preview and extra chats for customers
+- **Alerts** by Telegram, Pushover and email per group, with a preview and extra chats for customers
 - **Public dashboard** without hostnames or IP addresses, or with them per group; Admin and Viewer accounts
 - **SmokePing import**, JSON export, a single SQLite file for all data
 
@@ -102,6 +102,7 @@ Images are built for `linux/amd64` and `linux/arm64`.
 | `PINGSCOPE_DOMAIN` | | Your hostname, used for links in alerts |
 | `TZ` | | Time zone for logs and alert messages |
 | `TELEGRAM_BOT_TOKEN` | | Telegram bot token (or set it in the admin panel) |
+| `PUSHOVER_TOKEN` | | Pushover application token (or set it in the admin panel) |
 | `LETTERMINT_TOKEN` | | Lettermint API token for alert emails (or set it in the admin panel) |
 
 Everything else (measurement interval, probes, alerts, users) is set in the admin panel.

@@ -8,7 +8,7 @@ This guide installs PingScope on a Linux server with its own hostname (for examp
 2. [Get the code](#2-get-the-code)
 3. [Install with Docker (recommended)](#3-install-with-docker-recommended)
 4. [HTTPS / SSL certificate (Let's Encrypt)](#4-https--ssl-certificate-lets-encrypt)
-   - [Notifications: Telegram and email](#4a-notifications-telegram-and-email)
+   - [Notifications: Telegram, Pushover and email](#4a-notifications-telegram-pushover-and-email)
 5. [Updating, backups and useful commands](#5-updating-backups-and-useful-commands)
 6. [Install without Docker](#6-install-without-docker)
 7. [Using another reverse proxy](#7-using-another-reverse-proxy)
@@ -287,9 +287,9 @@ Run the installer and leave the hostname empty. PingScope then listens on `http:
 
 ---
 
-## 4a. Notifications: Telegram and email
+## 4a. Notifications: Telegram, Pushover and email
 
-PingScope can alert you when targets have packet loss or are down, by **Telegram** and/or **email** (via [Lettermint](https://lettermint.co)). Set up one or both.
+PingScope can alert you when targets have packet loss or are down, by **Telegram**, **[Pushover](https://pushover.net)** and/or **email** (via [Lettermint](https://lettermint.co)). Set up one or more.
 
 ### Telegram
 
@@ -297,9 +297,18 @@ PingScope can alert you when targets have packet loss or are down, by **Telegram
 2. Open your bot in Telegram and send it **/start** (or add the bot to a group and send a message there).
 3. **Admin → Settings → Notifications:** paste the *Telegram bot token* and save.
 4. **Admin → Alerts → Find chat IDs:** shows the chats that wrote to your bot. Click **Save as contact** to store one under **Telegram contacts** with a name of your choice. Tick **Gets all alerts** for yourself (or put the ID in *Settings → Notifications → Telegram chat IDs*).
-5. **Admin → Alerts → Send test alert:** sends a sample alert, marked TEST, exactly as a real one looks, to every admin channel (Telegram and email). Each contact also has its own *Test* button.
+5. **Admin → Alerts → Send test alert:** sends a sample alert, marked TEST, exactly as a real one looks, to every admin channel (Telegram, Pushover and email). Each contact also has its own *Test* button.
 
 **Alerts for a customer:** save the customer as a Telegram contact (they first send /start to your bot, or add the bot to a group), then in the target's edit dialog tick them under *Also send alerts for this target to*. Unsaved chat IDs can be typed in the field below. Those chats get messages about that target only, without group names. Notifications must be on for the target's group. *Send test alert* in the dialog checks it. The same works for a whole group: *Edit group → Also send alerts for this group to* (also when the group follows its parent's notification settings). Those chats get messages about every target in that group and its subgroups; on the targets they show as "via group". Deleting a contact also removes it from its targets and groups.
+
+### Pushover
+
+1. Log in at [pushover.net](https://pushover.net) and copy your **User Key** (top right on the dashboard). For a team, create a delivery group and use its group key.
+2. Under **Your Applications → Create an Application/API Token**, create an application (for example "PingScope") and copy its **API Token**.
+3. **Admin → Settings → Notifications:** paste the *Pushover application token* and enter one or more *Pushover user or group keys* (comma-separated), then save.
+4. **Admin → Alerts → Send test alert** checks it: the Pushover app shows a message marked TEST.
+
+Problems arrive with normal priority and a link to the graphs (when `PINGSCOPE_DOMAIN` is set); messages that only say something is fine again arrive quietly.
 
 ### Email (Lettermint)
 
@@ -321,7 +330,7 @@ While you edit the group, a **preview** shows how many targets would have alerte
 
 All alerts that start or end in the same measurement round are combined into one message, so a large outage sends one message instead of hundreds. Active alerts and the history of the last 90 days are listed under **Admin → Alerts**.
 
-Instead of entering the tokens in the admin panel you can put `TELEGRAM_BOT_TOKEN=...` and/or `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so messages contain links to the graphs.
+Instead of entering the tokens in the admin panel you can put `TELEGRAM_BOT_TOKEN=...`, `PUSHOVER_TOKEN=...` and/or `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so messages contain links to the graphs.
 
 ## 5. Updating, backups and useful commands
 
