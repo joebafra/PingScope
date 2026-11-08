@@ -8,6 +8,8 @@ SCHEMA = {
               "Modern: the default look, follows the visitor's light/dark preference. "
               "Classic: SmokePing-style with a dark menu, framed graphs and the familiar legend under every graph.",
               None, None),
+    "periods": ("3h,1d,7d,30d,1y", "multi", "Site", "Periods",
+                "The periods offered in the header and shown on a target page, from short to long.", None, None),
     "time_zone": ("browser", str, "Site", "Time zone of the times shown",
                   "Visitor: every visitor sees times in their own browser's time zone. Server: everyone sees the "
                   "server's time zone (the TZ setting of the server, shown under Status), like SmokePing. Choose Server "
@@ -88,6 +90,8 @@ CHOICES = {
     "theme": [("modern", "Modern"), ("classic", "Classic (SmokePing-style)")],
     "start_offset": [("start", "Together, at the start of each round"), ("random", "Spread over the round (random offset)")],
     "time_zone": [("browser", "Each visitor's own time zone"), ("server", "The server's time zone")],
+    "periods": [("1h", "1 hour"), ("3h", "3 hours"), ("6h", "6 hours"), ("12h", "12 hours"), ("1d", "Day"),
+                ("7d", "Week"), ("30d", "Month"), ("1y", "Year")],
 }
 
 
@@ -96,6 +100,14 @@ def coerce(key, value):
     if key not in SCHEMA:
         raise ValueError(f"Unknown setting: {key}")
     default, typ, _, label, _, lo, hi = SCHEMA[key]
+    if typ == "multi":  # several of CHOICES, stored comma-separated in the order of CHOICES
+        picked = {x.strip().lower() for x in (value if isinstance(value, list) else str(value or "").split(",")) if x.strip()}
+        unknown = picked - {c[0] for c in CHOICES[key]}
+        if unknown:
+            raise ValueError(f"{label}: unknown value {', '.join(sorted(unknown))}")
+        if not picked:
+            raise ValueError(f"{label}: choose at least one")
+        return ",".join(c[0] for c in CHOICES[key] if c[0] in picked)
     if key in CHOICES:
         v = str(value or "").strip().lower()
         if v not in [c[0] for c in CHOICES[key]]:

@@ -157,6 +157,11 @@ details.mtr summary:hover .mt{color:var(--accent)}
 :root[data-theme=classic] .badge.tcp{color:#0e7490}
 :root[data-theme=classic] #scheme{display:none}
 .pline{font-size:11px;color:var(--faint);margin-top:8px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.pgrid h3{margin:0 0 6px}
+:root[data-theme=classic] .pgrid .card{background:transparent;border:0;padding:0}
+:root[data-theme=classic] .pgrid h3{display:none}
+@media (max-width:900px){.pgrid{grid-template-columns:1fr}}
 :root[data-theme=classic] .pline{display:none}
 .gsub{margin:0 0 12px}
 /* a card with one graph: the IPv4/IPv6 label and the current value sit in the title row */

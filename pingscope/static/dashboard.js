@@ -1,7 +1,11 @@
 /* PingScope dashboard */
 (() => {
 const {$, $$, esc, store, api, sortTargets, classicStats, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge, draw, chartStats, hookChart} = PS;
-const RANGES = {'3h': 'Last 3 hours', '1d': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days', '1y': 'Last year'};
+const RANGES = {'1h': 'Last hour', '3h': 'Last 3 hours', '6h': 'Last 6 hours', '12h': 'Last 12 hours', '1d': 'Last 24 hours',
+                '7d': 'Last 7 days', '30d': 'Last 30 days', '1y': 'Last year'};
+const SHORT = {'1h': '1h', '3h': '3h', '6h': '6h', '12h': '12h', '1d': 'Day', '7d': 'Week', '30d': 'Month', '1y': 'Year'};
+// the periods chosen in Admin → Settings; the header buttons and the target page follow them
+const periods = () => (S.data?.periods || ['3h', '1d', '7d', '30d', '1y']).filter(r => RANGES[r]);
 const S = {
   data: null, groups: new Map(), kids: new Map(), targets: new Map(), byGroup: new Map(),
   fam: store.get('ps_fam', 'all'), range: store.get('ps_range', '1d'), q: '',
@@ -377,29 +381,37 @@ function viewTarget(tid){
     `<div class="legend" style="margin-top:12px">${PS.legendHTML()}</div>`;
   const fams = visibleFams();
   const box = $('#ranges');
-  // the range picked in the header comes first, the other ranges follow below it
-  const order = [S.range, ...Object.keys(RANGES).filter(r => r !== S.range)];
-  for (const r of order){
-    const label = RANGES[r];
-    const h = document.createElement('h3'); h.textContent = label; box.appendChild(h);
-    if (r === S.range && order.length > 1){ h.classList.add('chosen'); }
-    if (r === order[1]){ h.insertAdjacentHTML('beforebegin', '<div class="muted small" style="margin:22px 0 -4px">Other periods</div>'); }
-    const grid = document.createElement('div'); grid.className = 'rangegrid' + (fams.length === 1 ? ' single' : '');
-    for (const f of fams){
-      const card = document.createElement('div'); card.className = 'card pad big';
-      const fb = famBox(t, f, r, true, ts => showMtrAt(f, ts));
-      card.appendChild(fb);
-      const cv = fb.querySelector('canvas');
-      if (cv){
-        const st = document.createElement('div'); st.className = 'stats'; card.appendChild(st);
-        const classic = cv._onData;
-        cv._onData = d => { classic?.(d); const x = chartStats(d);
-          st.innerHTML = `<div>Avg median<b>${fmtMs(x.avg)}</b></div><div>Min<b>${fmtMs(x.min)}</b></div><div>Max<b>${fmtMs(x.max)}</b></div>` +
-            `<div>Jitter<b>${fmtMs(x.jit)}</b></div><div>Loss<b style="color:${x.loss == null ? 'inherit' : lossColor(x.loss)}">${x.loss == null ? '–' : x.loss.toFixed(2) + '%'}</b></div>`; };
-        if (probeLine(t)) card.insertAdjacentHTML('beforeend', `<div class="pline">probe: ${esc(probeLine(t))}</div>`);
-      }
+  // the period picked in the header comes first, the other periods follow
+  const order = [S.range, ...periods().filter(r => r !== S.range)];
+  const bigCard = (f, r) => {
+    const card = document.createElement('div'); card.className = 'card pad big';
+    const fb = famBox(t, f, r, true, ts => showMtrAt(f, ts));
+    card.appendChild(fb);
+    const cv = fb.querySelector('canvas');
+    if (cv){
+      const st = document.createElement('div'); st.className = 'stats'; card.appendChild(st);
+      const classic = cv._onData;
+      cv._onData = d => { classic?.(d); const x = chartStats(d);
+        st.innerHTML = `<div>Avg median<b>${fmtMs(x.avg)}</b></div><div>Min<b>${fmtMs(x.min)}</b></div><div>Max<b>${fmtMs(x.max)}</b></div>` +
+          `<div>Jitter<b>${fmtMs(x.jit)}</b></div><div>Loss<b style="color:${x.loss == null ? 'inherit' : lossColor(x.loss)}">${x.loss == null ? '–' : x.loss.toFixed(2) + '%'}</b></div>`; };
+      if (probeLine(t)) card.insertAdjacentHTML('beforeend', `<div class="pline">probe: ${esc(probeLine(t))}</div>`);
+    }
+    return card;
+  };
+  if (fams.length === 1){  // one family: every period side by side in two columns, like SmokePing's target page
+    const grid = document.createElement('div'); grid.className = 'pgrid';
+    for (const r of order){
+      const card = bigCard(fams[0], r);
+      card.insertAdjacentHTML('afterbegin', `<h3 class="${r === S.range && order.length > 1 ? 'chosen' : ''}">${esc(RANGES[r])}</h3>`);
       grid.appendChild(card);
     }
+    box.appendChild(grid);
+  } else for (const r of order){  // IPv4 and IPv6 next to each other, one period per row
+    const h = document.createElement('h3'); h.textContent = RANGES[r]; box.appendChild(h);
+    if (r === S.range && order.length > 1){ h.classList.add('chosen'); }
+    if (r === order[1]){ h.insertAdjacentHTML('beforebegin', '<div class="muted small" style="margin:22px 0 -4px">Other periods</div>'); }
+    const grid = document.createElement('div'); grid.className = 'rangegrid';
+    for (const f of fams) grid.appendChild(bigCard(f, r));
     box.appendChild(grid);
   }
   renderMtrCard(t);
@@ -514,6 +526,13 @@ async function refresh(first){
     }
     $('#siteTitle').textContent = d.site.title;
     PS.setTimeZone(d.site.tz);
+    const plist = periods().join(',');
+    if (plist !== S.plist){
+      S.plist = plist;
+      if (!periods().includes(S.range)) S.range = periods().includes('1d') ? '1d' : periods()[0];
+      $('#range').innerHTML = periods().map(r => `<button data-v="${r}">${SHORT[r]}</button>`).join('');
+      bindRange();
+    }
     $('#ver').innerHTML = esc(d.version || '') + (d.commit ? ` · <a href="https://github.com/joebafra/PingScope/commit/${esc(d.commit)}" target="_blank" rel="noopener noreferrer" title="Commit of the running version">${esc(d.commit)}</a>` : '');
     $('#status').textContent = d.last_run ? 'updated ' + ago(d.last_run) : 'waiting for first round…';
     $('#adminLink').textContent = d.can_edit ? 'Admin' : d.logged_in ? 'Account' : 'Log in';
@@ -537,12 +556,15 @@ function seg(sel, get, set){
   el.onclick = e => { const b = e.target.closest('button'); if (!b) return; set(b.dataset.v); paint(); };
   paint();
 }
-seg('#range', () => S.range, v => {
-  S.range = v; store.set('ps_range', v);
-  const view = currentRoute().view;
-  if (view === 'group') route();
-  else if (view === 'target'){ const y = scrollY; route(); if (y > 0) $('#ranges')?.scrollIntoView({behavior: 'smooth', block: 'start'}); }
-});
+function bindRange(){
+  seg('#range', () => S.range, v => {
+    S.range = v; store.set('ps_range', v);
+    const view = currentRoute().view;
+    if (view === 'group') route();
+    else if (view === 'target'){ const y = scrollY; route(); if (y > 0) $('#ranges')?.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+  });
+}
+bindRange();
 seg('#fam', () => S.fam, v => { S.fam = v; store.set('ps_fam', v); route(); });
 let st;
 $('#search').addEventListener('input', e => {

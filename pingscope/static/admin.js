@@ -677,6 +677,10 @@ function viewSettings(){
     <form id="sform">${sections.map(sec => `<div class="card pad settings-sec"><h3>${esc(sec)}</h3>` +
       sch.filter(x => x.section === sec).map(x => x.type === 'bool'
         ? `<label class="check"><input type="checkbox" name="${x.key}" ${s[x.key] ? 'checked' : ''}> <span><b>${esc(x.label)}</b>${x.help ? `<br><span class="muted small">${esc(x.help)}</span>` : ''}</span></label>`
+        : x.type === 'multi'
+        ? `<div class="field" data-f="${x.key}"><span>${esc(x.label)}</span><div class="tgpick">` +
+          x.options.map(([v, l]) => `<label><input type="checkbox" name="${x.key}" value="${v}" ${String(s[x.key]).split(',').includes(v) ? 'checked' : ''}> ${esc(l)}</label>`).join('') +
+          `</div>${x.help ? `<div class="help">${esc(x.help)}</div>` : ''}</div>`
         : `<label class="field" data-f="${x.key}"><span>${esc(x.label)}</span>` +
           (x.options ? `<select name="${x.key}">${x.options.map(([v, l]) => `<option value="${v}" ${s[x.key] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
             : x.key === 'site_remark' ? `<textarea name="${x.key}" rows="2" style="font-family:inherit;font-size:14px">${esc(s[x.key])}</textarea>`
@@ -688,7 +692,11 @@ function viewSettings(){
   $('#sform').onsubmit = async e => {
     e.preventDefault();
     const body = {};
-    for (const x of sch){ const el = e.target[x.key]; body[x.key] = x.type === 'bool' ? el.checked : el.value; }
+    for (const x of sch){
+      const el = e.target[x.key];
+      body[x.key] = x.type === 'bool' ? el.checked
+        : x.type === 'multi' ? [...e.target.querySelectorAll(`input[name="${x.key}"]:checked`)].map(i => i.value).join(',') : el.value;
+    }
     try {
       const r = await api('api/admin/settings', {method: 'PUT', body});
       A.data.settings = r.settings; A.data.warnings = r.warnings;

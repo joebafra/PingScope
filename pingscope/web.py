@@ -27,7 +27,8 @@ DB_PATH = os.environ.get("PINGSCOPE_DB", "data/pingscope.db")
 STATIC = Path(__file__).parent / "static"
 COOKIE = "pingscope_session"
 SESSION_TTL = 14 * 86400
-RANGES = {"3h": 3 * 3600, "1d": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "1y": 365 * 86400}
+RANGES = {"1h": 3600, "3h": 3 * 3600, "6h": 6 * 3600, "12h": 12 * 3600, "1d": 86400, "7d": 7 * 86400,
+          "30d": 30 * 86400, "1y": 365 * 86400}
 SERIES_RE = re.compile(r"^\d+-[46]$")
 
 store = Store(DB_PATH)
@@ -305,6 +306,7 @@ def tree(request: Request, _=Depends(can_view)):
         "groups": groups, "targets": targets,
         "probes": {k: p.label for k, p in PROBES.items()},
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
+        "periods": s["periods"].split(","),
         "mtr": bool(s["mtr_enabled"] and collector.mtr.available), "mtr_interval": s["mtr_interval"],
         "logged_in": admin, "can_edit": bool(user and user["role"] == "admin"),
         "version": __version__, "commit": __commit__,
