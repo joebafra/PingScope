@@ -58,6 +58,7 @@ label.field .errmsg,div.field .errmsg{color:var(--bad);font-size:12px;margin-top
 .check input{margin-top:3px}
 .row{display:flex;gap:8px;align-items:center}
 .row>*{min-width:0}
+.row>.btn{flex:none}  /* buttons keep their text inside; the input next to them shrinks instead */
 .grow{flex:1}
 
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel);flex:none}
