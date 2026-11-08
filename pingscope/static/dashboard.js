@@ -129,7 +129,7 @@ function applyZoom(range){
 }
 PS.onZoom = (cv, start, end) => { S.zoom[cv.dataset.range] = {start, end}; applyZoom(cv.dataset.range); };
 PS.onZoomReset = cv => { if (S.zoom[cv.dataset.range]){ delete S.zoom[cv.dataset.range]; applyZoom(cv.dataset.range); } };
-const zoomLabel = z => `${fmtShort(z.start)} – ${z.end - z.start < 86400 && new Date(z.start * 1000).getDate() === new Date(z.end * 1000).getDate() ? new Date(z.end * 1000).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}) : fmtShort(z.end)}`;
+const zoomLabel = z => `${fmtShort(z.start)} – ${z.end - z.start < 86400 && dayLabel(z.start) === dayLabel(z.end) ? hhmm(z.end) : fmtShort(z.end)}`;
 function zoomBar(){
   let bar = $('#zoombar');
   const ranges = Object.keys(S.zoom);
@@ -214,8 +214,8 @@ function fillOverview(problemsOnly){
 // ---------- group page ----------
 // ---------- alert history ----------
 const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
-const dayLabel = t => new Date(t * 1000).toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'long'});
-const hhmm = t => new Date(t * 1000).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+const dayLabel = t => PS.fmtTime(t, {weekday: 'long', day: 'numeric', month: 'long'});
+const hhmm = t => PS.fmtTime(t, {hour: '2-digit', minute: '2-digit'});
 let histSeq = 0;
 async function viewHistory(){
   const days = store.get('ps_hdays', 7), seq = ++histSeq;
@@ -513,6 +513,7 @@ async function refresh(first){
       requestAnimationFrame(() => $$('canvas.chart').forEach(c => draw(c)));
     }
     $('#siteTitle').textContent = d.site.title;
+    PS.setTimeZone(d.site.tz);
     $('#ver').innerHTML = esc(d.version || '') + (d.commit ? ` · <a href="https://github.com/joebafra/PingScope/commit/${esc(d.commit)}" target="_blank" rel="noopener noreferrer" title="Commit of the running version">${esc(d.commit)}</a>` : '');
     $('#status').textContent = d.last_run ? 'updated ' + ago(d.last_run) : 'waiting for first round…';
     $('#adminLink').textContent = d.can_edit ? 'Admin' : d.logged_in ? 'Account' : 'Log in';

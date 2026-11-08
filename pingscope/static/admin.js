@@ -10,6 +10,7 @@ async function boot(){
   const s = await api('api/session');
   $('#siteTitle').textContent = s.site_title;
   A.version = s.version + (s.commit ? ` (${s.commit})` : '');
+  A.serverTz = s.server_tz; PS.setTimeZone(s.tz);
   if (s.setup_required) return renderSetup();
   if (!s.user) return renderLogin();
   A.user = s.user;
@@ -667,7 +668,7 @@ function viewSettings(){
   const sections = [...new Set(sch.map(x => x.section))];
   main.innerHTML = `<div style="max-width:760px">
     <div class="card pad" style="margin-bottom:16px"><h2>Status</h2><p class="muted small" style="margin:6px 0 0">
-      Version: ${esc(A.version || '–')} ·
+      Version: ${esc(A.version || '–')} · Server time zone: ${esc(A.serverTz || '–')} ·
       Last round: ${st.last_run ? `${fmtShort(st.last_run)} (${ago(st.last_run)}, took ${st.duration}s)` : 'not yet'} ·
       fping: ${st.fping_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
       mtr: ${st.mtr_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'}</p></div>

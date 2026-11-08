@@ -34,9 +34,14 @@ const PS = (() => {
   const LOCALE = 'en-GB';
   const fmtMs = v => v == null ? '–' : (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + ' ms';
   const fmtLoss = p => p == null ? '–' : (p === 0 ? '0%' : p < 1 ? p.toFixed(1) + '%' : Math.round(p) + '%');
-  const fmtDT = t => new Date(t * 1000).toLocaleString(LOCALE, {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  const fmtShort = t => new Date(t * 1000).toLocaleString(LOCALE, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
-  const fmtAxis = (t, span) => new Date(t * 1000).toLocaleString(LOCALE,
+  // Times are shown in the visitor's own time zone, or in the server's (Admin → Settings → Time zone): TZ is then
+  // an IANA name like "Europe/Amsterdam".
+  let TZ;
+  const setTimeZone = z => { TZ = z || undefined; };
+  const fmtTime = (t, o) => new Date(t * 1000).toLocaleString(LOCALE, TZ ? {...o, timeZone: TZ} : o);
+  const fmtDT = t => fmtTime(t, {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const fmtShort = t => fmtTime(t, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+  const fmtAxis = (t, span) => fmtTime(t,
     span <= 2 * 86400 ? {hour:'2-digit', minute:'2-digit'} : span <= 40 * 86400 ? {day:'numeric', month:'short'} : {month:'short', year:'2-digit'});
   function ago(t){
     if (!t) return 'never';
@@ -228,7 +233,7 @@ const PS = (() => {
       const p = bucketAt(e);
       if (!p || p.empty){ tip.style.display = 'none'; return; }
       const loss = p.sent ? p.lost / p.sent * 100 : 0;
-      tip.innerHTML = `<b>${new Date(p.t * 1000).toLocaleString(LOCALE, {dateStyle: 'medium', timeStyle: 'short'})}</b><br>` +
+      tip.innerHTML = `<b>${fmtTime(p.t, {dateStyle: 'medium', timeStyle: 'short'})}</b><br>` +
         (p.q.length ? `median ${fmtMs(med(p.q))}<br>min ${fmtMs(p.q[0])} · max ${fmtMs(p.q[p.q.length - 1])}<br>` : 'no replies<br>') +
         `<span class="dot" style="background:${lossColor(loss)};margin-right:5px"></span>loss ${loss.toFixed(1)}% (${p.lost}/${p.sent})` +
         (onPick ? `<br><span style="color:var(--accent)">${e.pointerType === 'touch' ? 'Tap again' : 'Click'} for traceroute</span>` : '') +
@@ -349,5 +354,5 @@ const PS = (() => {
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
-          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn};
+          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone};
 })();

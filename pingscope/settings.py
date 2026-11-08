@@ -8,6 +8,10 @@ SCHEMA = {
               "Modern: the default look, follows the visitor's light/dark preference. "
               "Classic: SmokePing-style with a dark menu, framed graphs and the familiar legend under every graph.",
               None, None),
+    "time_zone": ("browser", str, "Site", "Time zone of the times shown",
+                  "Visitor: every visitor sees times in their own browser's time zone. Server: everyone sees the "
+                  "server's time zone (the TZ setting of the server, shown under Status), like SmokePing. Choose Server "
+                  "when visitors' browsers report UTC, for example because of privacy settings.", None, None),
     "public_dashboard": (True, bool, "Site", "Public dashboard",
                          "Allow viewing graphs without logging in. The admin panel always requires a login.", None, None),
     "public_show_hops": (False, bool, "Site", "Show traceroute hops to visitors",
@@ -83,6 +87,7 @@ DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 CHOICES = {
     "theme": [("modern", "Modern"), ("classic", "Classic (SmokePing-style)")],
     "start_offset": [("start", "Together, at the start of each round"), ("random", "Spread over the round (random offset)")],
+    "time_zone": [("browser", "Each visitor's own time zone"), ("server", "The server's time zone")],
 }
 
 

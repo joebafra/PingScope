@@ -126,6 +126,32 @@ def _throttle(request):
 
 # ---- pages --------------------------------------------------------------------------
 
+def _server_tz():
+    """IANA name of the server's time zone: the TZ variable, /etc/timezone or the /etc/localtime link."""
+    from zoneinfo import ZoneInfo
+    cands = [os.environ.get("TZ", "").strip().lstrip(":")]
+    with contextlib.suppress(OSError):
+        cands.append(Path("/etc/timezone").read_text().strip())
+    with contextlib.suppress(OSError):
+        cands.append(os.path.realpath("/etc/localtime").partition("zoneinfo/")[2])
+    for name in cands:
+        if name:
+            try:
+                ZoneInfo(name)
+                return name
+            except Exception:
+                continue
+    return "UTC"
+
+
+SERVER_TZ = _server_tz()
+
+
+def _display_tz(s):
+    """The time zone the dashboard shows times in; None = each visitor's own browser."""
+    return SERVER_TZ if s["time_zone"] == "server" else None
+
+
 def _asset_version():
     """Short hash of all static files: changes with every update, so browsers never mix old and new files."""
     import hashlib
@@ -166,7 +192,8 @@ def admin_page():
 def session(request: Request):
     s = store.settings()
     return {"user": current_user(request), "setup_required": store.user_count() == 0,
-            "public": s["public_dashboard"], "site_title": s["site_title"], "version": __version__, "commit": __commit__}
+            "public": s["public_dashboard"], "site_title": s["site_title"], "version": __version__, "commit": __commit__,
+            "tz": _display_tz(s), "server_tz": SERVER_TZ}
 
 
 @app.post("/api/login")
@@ -274,7 +301,7 @@ def tree(request: Request, _=Depends(can_view)):
         targets.append(item)
     shown_ids = {t["id"] for t in targets}
     return {
-        "site": {"title": s["site_title"], "remark": s["site_remark"], "theme": s["theme"]},
+        "site": {"title": s["site_title"], "remark": s["site_remark"], "theme": s["theme"], "tz": _display_tz(s)},
         "groups": groups, "targets": targets,
         "probes": {k: p.label for k, p in PROBES.items()},
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),
