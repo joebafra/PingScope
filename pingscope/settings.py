@@ -68,6 +68,13 @@ SCHEMA = {
                           "Where alerts go by default: one or more chat IDs, separated by commas. Send /start to your bot "
                           "and use Admin → Alerts → Find chat IDs. Per target you can add extra chat IDs, e.g. for the "
                           "customer of that connection.", None, None),
+    "pushover_token": ("", "secret", "Notifications", "Pushover application token",
+                       "From pushover.net → Your Applications → Create an Application/API Token. Stored on the server "
+                       "and never shown again; leave empty to keep the current token. The PUSHOVER_TOKEN environment "
+                       "variable, if set, takes priority.", None, None),
+    "pushover_users": ("", str, "Notifications", "Pushover user or group keys",
+                       "Where Pushover alerts go: one or more user or group keys from pushover.net, separated by commas.",
+                       None, None),
     "alert_after_rounds": (3, int, "Notifications", "Rounds in a row before alerting (default)",
                            "A problem must last this many measurement rounds before an alert starts, and the same "
                            "number of good rounds before it counts as resolved. Prevents alerts for a single blip. "
@@ -81,7 +88,8 @@ SCHEMA = {
 
 SECRETS = {k for k, v in SCHEMA.items() if v[1] == "secret"}
 # environment variables that override a secret setting
-SECRET_ENV = {"lettermint_token": "LETTERMINT_TOKEN", "telegram_bot_token": "TELEGRAM_BOT_TOKEN"}
+SECRET_ENV = {"lettermint_token": "LETTERMINT_TOKEN", "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
+              "pushover_token": "PUSHOVER_TOKEN"}
 
 DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 

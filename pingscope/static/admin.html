@@ -182,7 +182,8 @@ tr.off td{opacity:.5}
           <div class="help">How many measurement rounds in a row a problem must last before an alert (and good rounds before it's resolved). Empty = the default in Settings. Subgroups following this group use it too; a single target can override it.</div></label>
         <label class="check"><input type="checkbox" name="alert_down"> <span><b>Alert when down</b><br><span class="muted small">No replies at all (100% loss).</span></span></label>
         <label class="check"><input type="checkbox" name="alert_telegram"> <span><b>Send a Telegram message</b><br><span class="muted small">To the chat IDs in Settings → Notifications.</span></span></label>
-        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">With neither, alerts are only listed under Admin → Alerts (and sent to the extra chats below or on targets).</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_pushover"> <span><b>Send a Pushover notification</b><br><span class="muted small">To the user or group keys in Settings → Notifications.</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">With none of these, alerts are only listed under Admin → Alerts (and sent to the extra chats below or on targets).</span></span></label>
         <div id="alertPreview" class="apreview"></div>
         <div class="muted small" style="margin-top:6px">Applies to this group and its subgroups that are set to "Same as the parent group".</div>
       </div>

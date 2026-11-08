@@ -284,7 +284,7 @@ def apply(store, tree, mode="merge"):
                 try:
                     store.set_alerts(gid, g["alert_mode"], g.get("alert_loss"), g.get("alert_down", True),
                                      g.get("alert_email", True), g.get("alert_telegram", True),
-                                     g.get("alert_rounds"))
+                                     g.get("alert_rounds"), g.get("alert_pushover", True))
                 except ValueError:
                     pass
             existing_groups.append({"id": gid, "parent_id": parent_id, "name": name})
@@ -322,6 +322,7 @@ def export(store, include_settings=True):
                 "alert_mode": g.get("alert_mode", "inherit"), "alert_loss": g.get("alert_loss"),
                 "alert_down": bool(g.get("alert_down", True)), "alert_email": bool(g.get("alert_email", True)),
                 "alert_telegram": bool(g.get("alert_telegram", True)), "alert_rounds": g.get("alert_rounds"),
+                "alert_pushover": bool(g.get("alert_pushover", True)),
                 "alert_chat_ids": g.get("alert_chat_ids", ""),
                 "targets": [{k: t[k] for k in keep} for t in targets if t["group_id"] == g["id"]],
                 "groups": walk(g["id"]),

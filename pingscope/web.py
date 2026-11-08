@@ -460,7 +460,7 @@ def create_group(body: dict = Body(...)):
         if body.get("alert_mode"):
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
-                             body.get("alert_rounds"))
+                             body.get("alert_rounds"), bool(body.get("alert_pushover", True)))
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -481,7 +481,7 @@ def update_group(gid: int, body: dict = Body(...)):
         if "alert_mode" in body:
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
-                             body.get("alert_rounds"))
+                             body.get("alert_rounds"), bool(body.get("alert_pushover", True)))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:
@@ -773,6 +773,7 @@ def alert_list():
     s = store.settings()
     return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
             "telegram_problem": alerts_mod.telegram_ready(alerts_mod.with_contacts(s, store)),
+            "pushover_problem": alerts_mod.pushover_ready(s),
             "target_chats": sum(1 for t in targets.values() if t.get("alert_chat_ids")),
             "group_chats": sum(1 for g in groups.values() if g.get("alert_chat_ids")),
             "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,

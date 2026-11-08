@@ -461,6 +461,7 @@ function openGroup(g, parentId){
   gform.alert_down.checked = g ? g.alert_down : true;
   gform.alert_email.checked = g ? g.alert_email : true;
   gform.alert_telegram.checked = g ? g.alert_telegram : true;
+  gform.alert_pushover.checked = g ? g.alert_pushover : true;
   const parentChats = A.groupMap.get(g ? g.parent_id : parentId)?.alert_effective?.chats || [];
   chatPicker('#gTgPick', gform.alert_chat_ids, g?.alert_chat_ids, parentChats);
   $('#gTgTest').onclick = async () => {
@@ -508,7 +509,7 @@ gform.addEventListener('submit', async e => {
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
                 show_addresses: gform.show_addresses.checked,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
-                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_rounds: gform.alert_rounds.value,
+                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_pushover: gform.alert_pushover.checked, alert_rounds: gform.alert_rounds.value,
                 alert_chat_ids: pickedChats('#gTgPick', gform.alert_chat_ids)};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
@@ -737,7 +738,7 @@ function alertSummary(g, plain){
   const parts = [];
   if (e.loss) parts.push(`loss ≥ ${e.loss}%`);
   if (e.down) parts.push('down');
-  const ch = [e.telegram && 'Telegram', e.email && 'email'].filter(Boolean);
+  const ch = [e.telegram && 'Telegram', e.pushover && 'Pushover', e.email && 'email'].filter(Boolean);
   return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')} after ${e.rounds || A.data.settings.alert_after_rounds} rounds, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
 }
 const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
@@ -754,6 +755,7 @@ async function viewAlerts(){
     <div class="card pad" style="margin-bottom:16px"><h2>Notifications</h2>
       <p class="muted small" style="margin:6px 0 10px">Alerts are set per group: open a group under <a href="#targets">Targets</a> → Edit group → Notifications. ${r.groups_on ? `${r.groups_on} group(s) have notifications on.` : '<b>No group has notifications on yet.</b>'} Telegram and email settings are under <a href="#settings">Settings</a> → Notifications.</p>
       <div class="small" style="margin:0 0 10px">Telegram: ${r.telegram_problem ? `<span class="muted">not set up (${esc(r.telegram_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
+        Pushover: ${r.pushover_problem ? `<span class="muted">not set up (${esc(r.pushover_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
         Email: ${r.email_problem ? `<span class="muted">not set up (${esc(r.email_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'}
         ${r.target_chats || r.group_chats ? ` · own chat IDs on ${[r.group_chats && `${r.group_chats} group(s)`, r.target_chats && `${r.target_chats} target(s)`].filter(Boolean).join(' and ')}` : ''}</div>
       ${r.last_error ? `<div class="warnbox">${esc(r.last_error)}</div>` : ''}

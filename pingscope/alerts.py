@@ -14,11 +14,13 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 log = logging.getLogger("pingscope")
 
 LETTERMINT_URL = os.environ.get("LETTERMINT_API_URL", "https://api.lettermint.co/v1/send")
+PUSHOVER_URL = os.environ.get("PUSHOVER_API_URL", "https://api.pushover.net/1/messages.json")
 TELEGRAM_API = os.environ.get("TELEGRAM_API_URL", "https://api.telegram.org")
 MAX_LINES = 60  # targets listed per message; the rest is summarised
 
@@ -104,6 +106,56 @@ def telegram_chats(s):
                 name += f" (@{c['username']})"
             out[c["id"]] = {"id": c["id"], "name": name.strip(), "type": c.get("type")}
     return list(out.values())
+
+
+def po_token(s):
+    return os.environ.get("PUSHOVER_TOKEN", "").strip() or s.get("pushover_token", "")
+
+
+def po_users(s):
+    return [x for x in re.split(r"[\s,;]+", str(s.get("pushover_users") or "").strip()) if x]
+
+
+def pushover_ready(s):
+    """None when Pushover messages can be sent, otherwise the reason they can't."""
+    if not po_token(s):
+        return "no Pushover application token"
+    if not po_users(s):
+        return "no Pushover user key"
+    return None
+
+
+def send_pushover(s, title, message_html, url="", priority=0):
+    """Send one message to every Pushover user/group key. Returns the errors of keys that failed; raises
+    RuntimeError (readable message) when Pushover isn't set up or no key got the message."""
+    why = pushover_ready(s)
+    if why:
+        raise RuntimeError(f"Pushover is not set up: {why}")
+    if len(message_html) > 1024:  # Pushover's limit: cut at a line and say there is more
+        message_html = message_html[:990].rsplit("\n", 1)[0] + "\n… more in PingScope"
+    errors, delivered = [], 0
+    for user in po_users(s):
+        fields = {"token": po_token(s), "user": user, "title": title[:250], "message": message_html, "html": 1,
+                  "priority": priority}
+        if url:
+            fields.update(url=url[:512], url_title="Open PingScope")
+        req = urllib.request.Request(PUSHOVER_URL, data=urllib.parse.urlencode(fields).encode(), method="POST",
+                                     headers={"User-Agent": "PingScope"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                r.read()
+            delivered += 1
+        except urllib.error.HTTPError as e:
+            try:
+                detail = "; ".join(json.loads(e.read()).get("errors") or [])
+            except ValueError:
+                detail = ""
+            errors.append(f"Pushover answered {e.code} for user key …{user[-4:]}: {detail or e.reason}")
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            errors.append(f"Could not reach Pushover: {getattr(e, 'reason', e)}")
+    if not delivered:
+        raise RuntimeError("; ".join(dict.fromkeys(errors)))
+    return errors
 
 
 def token(s):
@@ -283,7 +335,8 @@ class Alerter:
         self.store.prune_alerts(ts - 90 * 86400)
         if not s["alert_recovery"]:
             events = [e for e in events if e[0] != "resolved"]
-        return [e for e in events if e[3].get("email") or e[3].get("telegram") or target_chats(e[2].target, e[3])]
+        return [e for e in events if e[3].get("email") or e[3].get("telegram") or e[3].get("pushover")
+                or target_chats(e[2].target, e[3])]
 
     def _close(self, a, ts):
         a["ended"] = ts
@@ -298,11 +351,26 @@ class Alerter:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
         mail_used = bool(token(s) or s.get("alert_email_from") or recipients(s))
         tg_used = bool(tg_token(s) or chat_list(s.get("telegram_chat_ids")))
+        po_used = bool(po_token(s) or po_users(s))
         mail = [e for e in events if e[3].get("email")] if mail_used else []
         tg = [e for e in events if e[3].get("telegram")] if tg_used else []
-        unsent = [e for e in events if (e[3].get("email") or e[3].get("telegram")) and e not in mail and e not in tg]
-        if unsent and not mail and not tg:
-            errors.append(f"{len(unsent)} alert(s) not sent: set up Telegram or email in Settings → Notifications")
+        po = [e for e in events if e[3].get("pushover")] if po_used else []
+        unsent = [e for e in events if (e[3].get("email") or e[3].get("telegram") or e[3].get("pushover"))
+                  and e not in mail and e not in tg and e not in po]
+        if unsent and not mail and not tg and not po:
+            errors.append(f"{len(unsent)} alert(s) not sent: set up Telegram, Pushover or email in Settings → Notifications")
+        if po:
+            why = pushover_ready(s)
+            if why:
+                errors.append(f"{len(po)} alert(s) not sent to Pushover: {why}")
+            else:
+                title, msg, prio = self.compose_pushover(ts, po, s)
+                try:
+                    errors += [f"Pushover alert failed at {when}: {x}"
+                               for x in await asyncio.to_thread(send_pushover, s, title, msg, base_url(), prio)]
+                    sent_any = True
+                except RuntimeError as e:
+                    errors.append(f"Pushover alert failed at {when}: {e}")
         if mail:
             why = email_ready(s)
             if why:
@@ -362,6 +430,15 @@ class Alerter:
         if chats is None:
             chats = chat_list(s["telegram_chat_ids"]) if tg_token(s) else []
             external = False
+            if pushover_ready(s) is None:
+                title, msg, prio = self.compose_pushover(ts, ev, s)
+                try:
+                    failed = await asyncio.to_thread(send_pushover, s, "[TEST] " + title,
+                                                     "🧪 <b>TEST</b> — this is not a real alert.\n\n" + msg, base_url(), prio)
+                    sent.append(f"Pushover to {len(po_users(s)) - len(failed)} of {len(po_users(s))} key(s)")
+                    errors += failed
+                except RuntimeError as e:
+                    errors.append(str(e))
             if email_ready(s) is None:
                 subject, text, body = self.compose(ts, ev, s)
                 try:
@@ -380,7 +457,8 @@ class Alerter:
             except RuntimeError as e:
                 errors.append(str(e))
         if not sent and not errors:
-            errors.append("Nothing to send to: set up Telegram (bot token + chat ID) or email in Settings → Notifications")
+            errors.append("Nothing to send to: set up Telegram (bot token + chat ID), Pushover or email in "
+                          "Settings → Notifications")
         return {"sent": sent, "errors": errors}
 
     def _rows(self, ts, events):
@@ -433,6 +511,14 @@ class Alerter:
         if len(rows) > MAX_LINES:
             lines.append(f"\n… and {len(rows) - MAX_LINES} more.")
         return "\n".join(lines)
+
+    def compose_pushover(self, ts, events, s):
+        """(title, HTML message, priority) for Pushover: the Telegram text without its header line; resolved-only
+        messages are sent quietly (priority -1)."""
+        title = self.compose(ts, events, s)[0]
+        body = self.compose_telegram(ts, events, s).split("\n", 2)[-1]
+        quiet = all(e[0] == "resolved" for e in events)
+        return title, body, -1 if quiet else 0
 
     def compose(self, ts, events, s):
         rows = self._rows(ts, events)

@@ -114,7 +114,7 @@ def verify_password(pw, stored):
 
 
 GROUP_COLS = ("id, parent_id, name, sort, sort_mode, hidden, show_addresses, alert_mode, alert_loss, alert_down, alert_email, "
-              "alert_telegram, alert_rounds, alert_chat_ids")
+              "alert_telegram, alert_pushover, alert_rounds, alert_chat_ids")
 
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
 ROLES = ("admin", "viewer")
@@ -153,7 +153,8 @@ class Store:
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1"),
-                         ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_rounds", "INTEGER"),
+                         ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_pushover", "INTEGER NOT NULL DEFAULT 1"),
+                         ("alert_rounds", "INTEGER"),
                          ("alert_chat_ids", "TEXT NOT NULL DEFAULT ''"),
                          ("show_addresses", "INTEGER NOT NULL DEFAULT 0")):  # 1 = visitors see hosts and addresses
             if col not in gcols:
@@ -207,6 +208,7 @@ class Store:
         for g in out:
             g["alert_down"], g["alert_email"] = bool(g["alert_down"]), bool(g["alert_email"])
             g["alert_telegram"] = bool(g["alert_telegram"])
+            g["alert_pushover"] = bool(g["alert_pushover"])
         for g in out:  # effective notification settings: the first group up the tree that isn't "inherit"
             p, src = g, None
             while p is not None:
@@ -218,6 +220,7 @@ class Store:
             g["alert_effective"] = {"on": on, "from": src["id"] if src else None,
                                     "loss": src["alert_loss"] if on else None, "down": on and src["alert_down"],
                                     "email": on and src["alert_email"], "telegram": on and src["alert_telegram"],
+                                    "pushover": on and src["alert_pushover"],
                                     "rounds": src["alert_rounds"] if on else None}  # None = the global setting
         for g in out:  # extra Telegram chats: this group's and all parent groups' together
             chats, p = [], g
@@ -288,7 +291,7 @@ class Store:
                                   1 if hidden else 0, 1 if show_addresses else 0))
             return cur.lastrowid
 
-    def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True, rounds=None):
+    def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True, rounds=None, pushover=True):
         rounds = _rounds(rounds)
         if mode not in ALERT_MODES:
             raise ValueError("Notifications must be inherit, off or on")
@@ -305,8 +308,9 @@ class Store:
             raise ValueError("Choose a packet loss threshold, alerts when down, or both")
         with self.lock, self.c:
             self.c.execute("UPDATE groups SET alert_mode=?, alert_loss=?, alert_down=?, alert_email=?, alert_telegram=?, "
-                           "alert_rounds=? WHERE id=?",
-                           (mode, loss, 1 if down else 0, 1 if email else 0, 1 if telegram else 0, rounds, gid))
+                           "alert_pushover=?, alert_rounds=? WHERE id=?",
+                           (mode, loss, 1 if down else 0, 1 if email else 0, 1 if telegram else 0, 1 if pushover else 0,
+                            rounds, gid))
 
     def set_group_chats(self, gid, value):
         ids = [x for x in re.split(r"[\s,;]+", str(value or "").strip()) if x]
