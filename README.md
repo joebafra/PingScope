@@ -84,6 +84,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
   - **TCP connect**: time to open a TCP connection to a port (443 by default). Useful for hosts that block ICMP, or to watch a web or mail server.
 - **Every minute by default**, with 20 pings of 56 bytes (or 10 DNS queries / TCP connects) per target per round, spaced one second apart. Interval, counts, spacing, timeout and ping packet size are settings.
 - **Per-target probe settings:** a target can have its own probes per round, spacing, timeout and packet size (*Edit target → Probe settings*), like a separate probe definition in SmokePing.
+- **Interval per group or target:** measure some targets less often, e.g. a gateway every minute and a website every 5 minutes (*Measure every* in the group dialog or under *Probe settings*, in whole rounds). Graphs and alerts follow each target's own rounds.
 - **Together or spread:** all targets start at the beginning of each round, or each target gets its own fixed random moment in the round (like SmokePing's `offset = random`), so not everything is sent at once. Set it for all targets and override it per target.
 - **Honest data:** when a probe can't run locally (fping missing, no IPv6 on the server, out of processes), the round is left as a gap instead of being recorded as 100% packet loss, and the error is shown in the admin panel.
 - **"Test now"** in the target dialog runs the probe immediately and shows the result, before you save.
@@ -147,7 +148,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 
 - **Targets:** nested groups and subgroups, drag targets onto a group to move them, ↑ ↓ ordering or automatic A → Z (natural) sorting per group, bulk actions (move, enable, disable, alerts on/off, delete), search over names, addresses, query names and notes.
 - **Offline** list: targets that got no reply at all, or whose hostname no longer resolves, with how long they have been offline and a filter (offline for at least 1 hour / 1 day / 7 / 30 days). Handy for cleaning up old customer connections.
-- **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe settings (probes per round, spacing, timeout, packet size, together or spread), mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
+- **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe settings (probes per round, spacing, timeout, packet size, together or spread, measure every N rounds), mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
 - **Groups** can be **hidden from visitors**: the group, its subgroups and their targets only exist for logged-in users.
 - **Show IP addresses to visitors** per group (off by default): visitors then see the host and the IPv4 and IPv6 addresses of the targets in that group and its subgroups, also as the destination in traceroutes. Single targets can opt out with *Don't show this target's addresses to visitors*. Groups that show addresses get a 🌐 in the group list.
 - **Import & export:** SmokePing import with preview, JSON export and import of groups, targets and settings.
@@ -160,7 +161,7 @@ Paste your SmokePing `Targets` section (or a whole config file, or upload it) in
 
 - Nested groups (`+`, `++`, `+++`) become groups and subgroups, using `title` as the name.
 - `probe` is inherited like in SmokePing: `FPing` → ping, `FPing6` → ping over IPv6 only, `DNS` → DNS (with `lookup` and `server`), `TCPPing` → TCP.
-- Your own probes from the `*** Probes ***` section (for example `++ FPingGateway` under `+ FPing`) are understood too: their `pings`, `packetsize`, `timeout`, `hostinterval` and `offset = random` become the probe settings of the targets that use them. PingScope uses one measurement interval for all targets, so a different `step` is reported in the preview.
+- Your own probes from the `*** Probes ***` section (for example `++ FPingGateway` under `+ FPing`) are understood too: their `pings`, `packetsize`, `timeout`, `hostinterval` and `offset = random` become the probe settings of the targets that use them. A probe `step` that is a multiple of the 60 s interval (e.g. `step = 300`) becomes *measure every 5 rounds* on its targets.
 - The known IPv6 addresses of the **root servers and large public resolvers** (Google, Cloudflare, Quad9, OpenDNS, NextDNS) are added automatically, so they're measured over IPv6 right away.
 - The preview shows the resulting tree and points out outdated addresses and duplicate targets.
 - *Add to existing* reuses groups with the same name and skips identical targets; *Replace everything* starts fresh.
@@ -262,7 +263,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 
 | Setting | Default | Range | What it does |
 |---|---|---|---|
-| Measurement interval | 60 s | 30–3600 | Every target is measured once per interval. |
+| Measurement interval | 60 s | 30–3600 | The length of a round: every target is measured once per round, or every N rounds when its group or the target says so. |
 | Pings per round | 20 | 1–100 | ICMP echo requests per target per round. |
 | DNS queries per round | 10 | 1–100 | Queries per DNS target per round. |
 | TCP connects per round | 10 | 1–100 | Connection attempts per TCP target per round. |

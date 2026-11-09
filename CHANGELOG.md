@@ -2,6 +2,17 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
 
+## 0.013 — 2026-11-09
+
+### Added
+
+- **Measure every N rounds**, per group (inherited by subgroups) and per target: every round as before, or every 2, 3, 5, 10, 15, 30 or 60 rounds. For example a gateway every minute and a website every 5 minutes. Graphs, statistics and alerts follow the target's own rounds, and the probe line shows its interval.
+- SmokePing import: a probe `step` that is a multiple of 60 s (such as `step = 300`) becomes *measure every 5 rounds* on its targets.
+
+### Changed
+
+- Admin target list: status reads "IPv4 · 6.30 ms" instead of "v4 6.30 ms".
+
 ## 0.012 — 2026-11-09
 
 ### Added
