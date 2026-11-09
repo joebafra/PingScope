@@ -6,7 +6,7 @@ import zlib
 
 from . import settings as settings_mod
 from .alerts import Alerter
-from .db import summary
+from .db import measure_every, summary
 from .mtr import MtrScheduler
 from .probes import PROBES, PartialFailure, Result
 from .resolver import Resolver
@@ -72,7 +72,9 @@ class Collector:
         series = await self.resolver.plan(targets, s["resolve_interval"])
         self._set_series(series)
         self.warnings += too_long(series, s)
-        results, errors = await measure_spread(series, s, ts)
+        groups = {g["id"]: g for g in await asyncio.to_thread(self.store.groups)}
+        due = [x for x in series if is_due(x.target, groups, s, ts)]  # targets measured every N rounds skip the rest
+        results, errors = await measure_spread(due, s, ts)
         self.warnings += [f"The {p} probe could not run in the last round, so no data was recorded for it: {e}"
                           for p, e in errors.items()]
         rows = []
@@ -94,6 +96,15 @@ class Collector:
         self.last_run = ts
         self.last_duration = round(time.monotonic() - t0, 1)
         log.info("Round %s: %d series in %.1fs", time.strftime("%H:%M", time.localtime(ts)), len(rows), self.last_duration)
+
+
+def is_due(target, groups, s, ts):
+    """Whether a target is measured in the round starting at ts. A target measured every N rounds gets its own fixed
+    round within each N, so not all of them fall in the same round."""
+    n = measure_every(target, groups)
+    if n <= 1:
+        return True
+    return (ts // s["interval"] + zlib.crc32(f"pingscope-every-{target['id']}".encode())) % n == 0
 
 
 def start_offset(series, s):

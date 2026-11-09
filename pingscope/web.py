@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __commit__, __version__, alerts as alerts_mod, importer, rdns, settings as settings_mod
 from .collector import Collector, measure
-from .db import Store
+from .db import Store, measure_every
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
 from .probes import PROBES
 from .resolver import Resolver, Series, lookup
@@ -293,6 +293,7 @@ def tree(request: Request, _=Depends(can_view)):
             "series": [_series_json(x, admin, addr) for x in collector.series.get(t["id"], [])],
             # for the probe line under the graphs, like SmokePing's "20 ICMP Echo Pings (56 Bytes) every 60 seconds"
             "pings": t["count"] or (s[probe.count_setting] if probe else None),
+            "interval": s["interval"] * measure_every(t, by_id),  # seconds between two measurements of this target
         }
         if t["probe"] == "ping":
             item["size"] = t["packet_size"] or s["ping_size"]
@@ -348,15 +349,17 @@ def series(request: Request, key: str, range: str = "1d", points: int = Query(60
     if not _visible_to(request, int(key.split("-")[0])):
         raise HTTPException(404, "Not found")
     s = store.settings()
+    t = store.target(int(key.split("-")[0]))
+    every = s["interval"] * (measure_every(t, {g["id"]: g for g in store.groups()}) if t else 1)  # this target's round
     now = int(time.time())
     raw_from = now - s["raw_retention_days"] * 86400
     custom = start is not None and end is not None
     if custom:
         end = min(int(end), now)
         start = max(int(start), now - 5 * 365 * 86400)
-        if end - start < 5 * s["interval"]:  # at least a few rounds
+        if end - start < 5 * every:  # at least a few rounds
             mid = (start + end) // 2
-            start, end = mid - 3 * s["interval"], mid + 3 * s["interval"]
+            start, end = mid - 3 * every, mid + 3 * every
         sec = end - start
         source = "raw" if start >= raw_from and sec <= 7 * 86400 else "hourly"
     else:
@@ -366,7 +369,7 @@ def series(request: Request, key: str, range: str = "1d", points: int = Query(60
         source = "raw" if sec <= min(7 * 86400, s["raw_retention_days"] * 86400) else "hourly"
         end = now
         start = end - sec
-    native = s["interval"] if source == "raw" else 3600
+    native = every if source == "raw" else max(3600, every)
     step = max(native, math.ceil(sec / points / native) * native)
     start -= start % step
     return {"key": key, "start": start, "end": end, "step": step, "source": source, "custom": custom,
@@ -468,6 +471,8 @@ def create_group(body: dict = Body(...)):
                                  bool(body.get("hidden")), bool(body.get("show_addresses")))
         if body.get("alert_chat_ids"):
             store.set_group_chats(gid, body["alert_chat_ids"])
+        if body.get("measure_every") not in (None, ""):
+            store.set_measure_every(gid, body["measure_every"])
         if body.get("alert_mode"):
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
@@ -487,6 +492,8 @@ def update_group(gid: int, body: dict = Body(...)):
             store.set_hidden(gid, bool(body["hidden"]))
         if "show_addresses" in body:
             store.set_show_addresses(gid, bool(body["show_addresses"]))
+        if "measure_every" in body:
+            store.set_measure_every(gid, body["measure_every"])
         if "alert_chat_ids" in body:
             store.set_group_chats(gid, body["alert_chat_ids"])
         if "alert_mode" in body:

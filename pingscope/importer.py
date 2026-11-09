@@ -131,7 +131,10 @@ def parse_smokeping(text):
         if offset == "random":
             t["start_offset"] = "random"
         if pdef and pv.get("step") and pv["step"].strip() != str(DEFAULTS["interval"]):
-            steps.setdefault(pv["step"].strip(), set()).add(pdef["name"])
+            step = pv["step"].strip()
+            steps.setdefault(step, set()).add(pdef["name"])
+            if step.isdigit() and int(step) % DEFAULTS["interval"] == 0 and 1 < int(step) // DEFAULTS["interval"] <= 60:
+                t["measure_every"] = int(step) // DEFAULTS["interval"]
         if not v.get("pings") and pv.get("pings"):
             v["pings"] = pv["pings"]
 
@@ -177,10 +180,15 @@ def parse_smokeping(text):
         return group
 
     top = walk(root, {"probe": root["vars"].get("probe", "FPing")}, [])
-    for step, names in sorted(steps.items()):
-        warnings.append(f"Probe{'s' if len(names) > 1 else ''} {', '.join(sorted(names))} use{'' if len(names) > 1 else 's'} "
-                        f"step = {step}; PingScope measures every target at the same interval "
-                        f"(Settings → Measurement interval, default {DEFAULTS['interval']}s).")
+    for step, names in sorted(steps.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
+        n = int(step) // DEFAULTS["interval"] if step.isdigit() else 0
+        what = f"Probe{'s' if len(names) > 1 else ''} {', '.join(sorted(names))} use{'' if len(names) > 1 else 's'} step = {step}"
+        if step.isdigit() and int(step) % DEFAULTS["interval"] == 0 and 1 < n <= 60:
+            warnings.append(f"{what}: their targets are measured every {n} rounds ({int(step) // 60} min at the default "
+                            f"{DEFAULTS['interval']}s interval; Edit target → Probe settings → Measure every).")
+        else:
+            warnings.append(f"{what}; PingScope measures in rounds of the measurement interval "
+                            f"(Settings → Measurement interval, default {DEFAULTS['interval']}s), so this step isn't used.")
     groups = top["groups"]
     if top["targets"]:
         groups.insert(0, {"name": "Ungrouped", "groups": [], "targets": top["targets"]})
@@ -275,6 +283,11 @@ def apply(store, tree, mode="merge"):
         if gid is None:
             gid = store.create_group(name, parent_id, g.get("sort_mode") if g.get("sort_mode") in ("manual", "name") else "manual",
                                      bool(g.get("hidden")), bool(g.get("show_addresses")))
+            if g.get("measure_every"):
+                try:
+                    store.set_measure_every(gid, g["measure_every"])
+                except ValueError:
+                    pass
             if g.get("alert_chat_ids"):
                 try:
                     store.set_group_chats(gid, g["alert_chat_ids"])
@@ -311,14 +324,14 @@ def export(store, include_settings=True):
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
             "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds", "hide_address",
-            "spacing_ms", "timeout_ms", "packet_size", "start_offset")
+            "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every")
 
     def walk(parent_id):
         out = []
         for g in [g for g in groups if g["parent_id"] == parent_id]:
             out.append({
                 "name": g["name"], "sort_mode": g.get("sort_mode", "manual"), "hidden": bool(g.get("hidden")),
-                "show_addresses": bool(g.get("show_addresses")),
+                "show_addresses": bool(g.get("show_addresses")), "measure_every": g.get("measure_every"),
                 "alert_mode": g.get("alert_mode", "inherit"), "alert_loss": g.get("alert_loss"),
                 "alert_down": bool(g.get("alert_down", True)), "alert_email": bool(g.get("alert_email", True)),
                 "alert_telegram": bool(g.get("alert_telegram", True)), "alert_rounds": g.get("alert_rounds"),

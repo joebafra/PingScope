@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS targets(
   note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
   alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER,
   hide_address INTEGER NOT NULL DEFAULT 0, spacing_ms INTEGER, timeout_ms INTEGER, packet_size INTEGER,
-  start_offset TEXT NOT NULL DEFAULT '');
+  start_offset TEXT NOT NULL DEFAULT '', measure_every INTEGER);
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -59,7 +59,7 @@ ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
                  "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds",
-                 "hide_address", "spacing_ms", "timeout_ms", "packet_size", "start_offset")
+                 "hide_address", "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -113,7 +113,7 @@ def verify_password(pw, stored):
         return False
 
 
-GROUP_COLS = ("id, parent_id, name, sort, sort_mode, hidden, show_addresses, alert_mode, alert_loss, alert_down, alert_email, "
+GROUP_COLS = ("id, parent_id, name, sort, sort_mode, hidden, show_addresses, measure_every, alert_mode, alert_loss, alert_down, alert_email, "
               "alert_telegram, alert_pushover, alert_rounds, alert_chat_ids")
 
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
@@ -147,7 +147,8 @@ class Store:
         if "hide_address" not in tcols:  # 1 = never show this target's addresses to visitors
             self.c.execute("ALTER TABLE targets ADD COLUMN hide_address INTEGER NOT NULL DEFAULT 0")
         for col, ddl in (("spacing_ms", "INTEGER"), ("timeout_ms", "INTEGER"), ("packet_size", "INTEGER"),
-                         ("start_offset", "TEXT NOT NULL DEFAULT ''")):  # per-target probe settings; NULL/'' = global
+                         ("start_offset", "TEXT NOT NULL DEFAULT ''"),
+                         ("measure_every", "INTEGER")):  # per-target probe settings; NULL/'' = group or global
             if col not in tcols:
                 self.c.execute(f"ALTER TABLE targets ADD COLUMN {col} {ddl}")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
@@ -156,7 +157,8 @@ class Store:
                          ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_pushover", "INTEGER NOT NULL DEFAULT 1"),
                          ("alert_rounds", "INTEGER"),
                          ("alert_chat_ids", "TEXT NOT NULL DEFAULT ''"),
-                         ("show_addresses", "INTEGER NOT NULL DEFAULT 0")):  # 1 = visitors see hosts and addresses
+                         ("show_addresses", "INTEGER NOT NULL DEFAULT 0"),  # 1 = visitors see hosts and addresses
+                         ("measure_every", "INTEGER")):  # measure every N rounds; NULL = same as the parent group
             if col not in gcols:
                 self.c.execute(f"ALTER TABLE groups ADD COLUMN {col} {ddl}")
         self.lock = threading.RLock()
@@ -240,6 +242,11 @@ class Store:
             while p is not None and not show:
                 show, p = bool(p["show_addresses"]), by.get(p["parent_id"])
             g["show_addresses_effective"] = show
+        for g in out:  # measure every N rounds: the first group up the tree that sets it, else every round
+            p = g
+            while p is not None and not p["measure_every"]:
+                p = by.get(p["parent_id"])
+            g["measure_every_effective"] = p["measure_every"] if p is not None else 1
         return out
 
     def hidden_group_ids(self):
@@ -248,6 +255,12 @@ class Store:
     def set_hidden(self, gid, hidden):
         with self.lock, self.c:
             self.c.execute("UPDATE groups SET hidden=? WHERE id=?", (1 if hidden else 0, gid))
+
+    def set_measure_every(self, gid, n):
+        """Measure the group's targets every n rounds; None = same as the parent group."""
+        n = _every(n)
+        with self.lock, self.c:
+            self.c.execute("UPDATE groups SET measure_every=? WHERE id=?", (n, gid))
 
     def set_show_addresses(self, gid, show):
         with self.lock, self.c:
@@ -703,6 +716,25 @@ class Store:
         r = self._one("SELECT * FROM mtr WHERE path=? AND ts BETWEEN ? AND ? ORDER BY ABS(ts-?) LIMIT 1",
                       (path, t - window, t + window, t))
         return self._mtr_row(r) if r else None
+
+
+def _every(v):
+    """Measure every N rounds: None (inherit) or 1..60."""
+    if v in ("", None):
+        return None
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        raise ValueError("Measure every must be a whole number of rounds")
+    if not 1 <= v <= 60:
+        raise ValueError("Measure every must be between 1 and 60 rounds")
+    return v
+
+
+def measure_every(target, groups):
+    """Rounds between two measurements of a target: its own setting, else its group's (inherited), else 1.
+    groups: {id: group} as returned by Store.groups()."""
+    return target.get("measure_every") or (groups.get(target["group_id"]) or {}).get("measure_every_effective") or 1
 
 
 def _rounds(v):

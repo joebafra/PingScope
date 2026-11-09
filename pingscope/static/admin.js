@@ -110,7 +110,7 @@ function seriesHTML(t){
   return xs.map(s => {
     const st = status(s);
     const v = s.error && !s.address ? 'unresolved' : !s.last ? 'waiting' : s.last.loss >= 100 ? 'down' : fmtMs(s.last.median) + (s.last.loss > 0 ? ' · ' + fmtLoss(s.last.loss) : '');
-    return `<span class="st" title="${esc(s.address || s.error || '')}"><span class="dot ${st}"></span>v${s.family} ${v}</span>`;
+    return `<span class="st" title="${esc(s.address || s.error || '')}"><span class="dot ${st}"></span>IPv${s.family} · ${v}</span>`;
   }).join('');
 }
 function markErrors(form, errors){
@@ -311,7 +311,7 @@ const tdlg = $('#tdlg'), tform = $('#tform');
 let editing = null;
 function openTarget(t, gid){
   editing = t;
-  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, hide_address: false, spacing_ms: null, timeout_ms: null, packet_size: null, start_offset: '', note: '', group_id: gid};
+  const p = t || {name: '', probe: 'ping', host: '', host_v6: '', families: 'auto', dns_query: '', dns_type: 'A', port: '', count: '', mtr: true, enabled: true, alert_skip: false, alert_chat_ids: '', alert_rounds: null, hide_address: false, spacing_ms: null, timeout_ms: null, packet_size: null, start_offset: '', measure_every: null, note: '', group_id: gid};
   $('#tdlgTitle').textContent = t ? 'Edit target' : 'Add target';
   tform.group_id.innerHTML = groupOptions(p.group_id);
   tform.probe.innerHTML = A.data.probes.map(x => `<option value="${x.name}">${esc(x.label)}</option>`).join('');
@@ -325,7 +325,7 @@ function openTarget(t, gid){
   tform.start_offset.innerHTML = `<option value="">Same as Settings (${esc(offLabel(A.data.settings.start_offset).toLowerCase())})</option>` +
     offOpts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
   tform.start_offset.value = p.start_offset || '';
-  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'start_offset'].some(k => p[k] != null && p[k] !== '');
+  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'start_offset', 'measure_every'].some(k => p[k] != null && p[k] !== '');
   tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
   tform.hide_address.checked = !!p.hide_address;
   const addrHelp = () => {
@@ -333,7 +333,9 @@ function openTarget(t, gid){
     $('#hideAddrHelp').textContent = g?.show_addresses_effective ? '(its group shows IP addresses to visitors)'
       : "(its group doesn't show IP addresses to visitors, so they're hidden anyway)";
   };
-  tform.group_id.onchange = addrHelp; addrHelp();
+  const everyFill = v => everyOptions(tform.measure_every, `Same as the group (${everyLabel(A.groupMap.get(+tform.group_id.value)?.measure_every_effective || 1)})`, v);
+  everyFill(p.measure_every);
+  tform.group_id.onchange = () => { addrHelp(); everyFill(tform.measure_every.value); probeSummary(); }; addrHelp();
   chatPicker('#tgPick', tform.alert_chat_ids, p.alert_chat_ids, A.groupMap.get(p.group_id)?.alert_effective?.chats || []);
   $('#tgTest').onclick = async () => {
     const chats = pickedChats('#tgPick', tform.alert_chat_ids, true);
@@ -347,6 +349,18 @@ function openTarget(t, gid){
   probeChanged();
   tdlg.showModal();
   (t ? tform.host : tform.name).focus();
+}
+// "every 5 rounds" as a duration, from the measurement interval
+const EVERY = [1, 2, 3, 5, 10, 15, 30, 60];
+function everyLabel(n){
+  const sec = n * A.data.settings.interval;
+  return sec % 3600 === 0 ? `${sec / 3600} h` : sec % 60 === 0 ? `${sec / 60} min` : `${sec} s`;
+}
+function everyOptions(sel, inheritText, value){
+  const opts = new Set([...EVERY, ...(value ? [+value] : [])]);
+  sel.innerHTML = `<option value="">${esc(inheritText)}</option>` + [...opts].sort((a, b) => a - b)
+    .map(n => `<option value="${n}">${n === 1 ? 'Every round' : `Every ${n} rounds`} (${everyLabel(n)})</option>`).join('');
+  sel.value = value ?? '';
 }
 function probeChanged(){
   const pr = A.probeMap[tform.probe.value];
@@ -368,8 +382,9 @@ function probeSummary(){
   const st = A.data.settings, pr = tform.probe.value, num = k => tform[k].value.trim();
   const n = num('count') || st[{ping: 'ping_count', dns: 'dns_count', tcp: 'tcp_count'}[pr]];
   const off = tform.start_offset.value || st.start_offset;
+  const every = +tform.measure_every.value || A.groupMap.get(+tform.group_id.value)?.measure_every_effective || 1;
   $('#probeOptsSum').textContent = `· ${n}${pr === 'ping' ? ` × ${num('packet_size') || st.ping_size} bytes` : ` ${pr === 'dns' ? 'queries' : 'connects'}`}, ` +
-    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms, ${off === 'random' ? 'spread' : 'together'}`;
+    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms, ${off === 'random' ? 'spread' : 'together'}, every ${everyLabel(every)}`;
 }
 tform.probe.onchange = probeChanged;
 $('#probeOpts').addEventListener('input', probeSummary);
@@ -456,6 +471,9 @@ function openGroup(g, parentId){
   gform.sort_subgroups.checked = false;
   gform.hidden.checked = !!(g && g.hidden);
   gform.show_addresses.checked = !!(g && g.show_addresses);
+  const gEvery = v => { const pg = A.groupMap.get(gform.parent_id.value ? +gform.parent_id.value : null);
+    everyOptions(gform.measure_every, pg ? `Same as the parent group (${everyLabel(pg.measure_every_effective || 1)})` : `Every round (${everyLabel(1)}, the default)`, v); };
+  gEvery(g?.measure_every);
   gform.alert_mode.value = g ? g.alert_mode : 'inherit';
   gform.alert_loss.value = g?.alert_loss ?? '';
   gform.alert_down.checked = g ? g.alert_down : true;
@@ -486,7 +504,7 @@ function openGroup(g, parentId){
     const p = parent();
     $('#gAddrInherit').textContent = p?.show_addresses_effective ? 'Already on through a parent group.' : '';
   };
-  gform.alert_mode.onchange = () => { syncAlert(); preview(); }; gform.parent_id.onchange = () => { syncAlert(); syncAddr(); }; syncAlert(); syncAddr();
+  gform.alert_mode.onchange = () => { syncAlert(); preview(); }; gform.parent_id.onchange = () => { syncAlert(); syncAddr(); gEvery(gform.measure_every.value); }; syncAlert(); syncAddr();
   gform.alert_loss.oninput = preview; gform.alert_down.onchange = preview; gform.alert_rounds.oninput = preview;
   $('#alertPreview').innerHTML = ''; preview();
   $('#sortSubWrap').classList.toggle('hidden', !g || !kids(g.id).length);
@@ -507,7 +525,7 @@ gform.addEventListener('submit', async e => {
   e.preventDefault();
   const body = {name: gform.name.value, parent_id: gform.parent_id.value ? +gform.parent_id.value : null,
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
-                show_addresses: gform.show_addresses.checked,
+                show_addresses: gform.show_addresses.checked, measure_every: gform.measure_every.value,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
                 alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_pushover: gform.alert_pushover.checked, alert_rounds: gform.alert_rounds.value,
                 alert_chat_ids: pickedChats('#gTgPick', gform.alert_chat_ids)};

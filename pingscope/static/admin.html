@@ -133,6 +133,8 @@ tr.off td{opacity:.5}
       </div>
       <label class="field" data-f="start_offset"><span>When to measure</span><select name="start_offset"></select>
         <div class="help">Spread gives this target its own fixed random moment in each round, like SmokePing's offset = random, so not every target is sent at once.</div></label>
+      <label class="field" data-f="measure_every"><span>Measure every</span><select name="measure_every"></select>
+        <div class="help">Measure this target less often, e.g. every 5 minutes for a website you don't manage. Its graphs, statistics and alerts use its own rounds ("3 rounds in a row" is then 15 minutes).</div></label>
     </details>
     <label class="check"><input type="checkbox" name="mtr"> <span>Run mtr traceroutes for this target</span></label>
     <label class="check"><input type="checkbox" name="enabled"> <span>Enabled</span></label>
@@ -167,6 +169,8 @@ tr.off td{opacity:.5}
     <label class="check" id="sortSubWrap"><input type="checkbox" name="sort_subgroups"> <span>Use this target order for all subgroups too</span></label>
     <label class="check"><input type="checkbox" name="hidden"> <span><b>Hide from visitors</b><br><span class="muted small">This group, its subgroups and their targets are only visible when logged in.</span></span></label>
     <label class="check"><input type="checkbox" name="show_addresses"> <span><b>Show IP addresses to visitors</b><br><span class="muted small">Visitors see the host and the IPv4 and IPv6 addresses of the targets in this group and its subgroups, also in traceroutes. Single targets can opt out. DNS query names stay hidden. <span id="gAddrInherit"></span></span></span></label>
+    <label class="field"><span>Measure every</span><select name="measure_every"></select>
+      <div class="help">How often the targets in this group are measured. Subgroups set to "Same as the parent group" follow it; a single target can override it under Edit target → Probe settings.</div></label>
     <div class="alertbox">
       <label class="field"><span>Notifications</span><select name="alert_mode">
         <option value="inherit">Same as the parent group</option>

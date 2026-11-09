@@ -353,7 +353,7 @@ function famBox(t, f, range, big, onPick){
 // like SmokePing: "20 ICMP Echo Pings (56 Bytes) every 60 seconds"
 function probeLine(t){
   if (!t.pings) return '';
-  const every = `every ${S.data.interval} seconds`;
+  const every = `every ${t.interval || S.data.interval} seconds`;
   return t.probe === 'ping' ? `${t.pings} ICMP Echo Pings (${t.size} Bytes) ${every}`
     : t.probe === 'dns' ? `${t.pings} DNS Queries ${every}`
     : t.probe === 'tcp' ? `${t.pings} TCP Connects ${every}` : `${t.pings} probes ${every}`;
