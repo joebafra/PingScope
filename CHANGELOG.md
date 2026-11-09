@@ -2,6 +2,12 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
 
+## 0.012 — 2026-11-09
+
+### Added
+
+- **Reverse DNS in traceroutes**: the hostname (PTR record) of every hop is shown after its address, for IPv4 and IPv6. mtr still runs without DNS (`-n`), names are looked up afterwards with a short timeout and a cache. Visitors only see a name where they also see the address. Can be turned off under *Settings → Traceroutes → Show reverse DNS names*.
+
 ## 0.011 — 2026-11-08
 
 ### Added

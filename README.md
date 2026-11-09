@@ -125,6 +125,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - [mtr](https://github.com/traviscross/mtr) runs per network path (address family + address) **every 15 minutes**, and **every minute while a target has packet loss or is down**, so you have the path at the moment of the problem.
 - Each report is labelled with **why it ran** (*scheduled*, *loss 5%*, *down*) and shows what the traceroute itself measured: loss at the destination, hop count, latency.
 - Hop-by-hop table with loss, sent, last, average, best, worst and standard deviation per hop.
+- **Reverse DNS names** (PTR) after every hop address, IPv4 and IPv6, looked up after the traceroute with a cache, so a slow resolver never delays it.
 - Filter on **problems only**, load older reports, or click a point in a graph to jump to the nearest report.
 - A limit on parallel mtr processes keeps the server responsive during a large outage. History is kept for 30 days.
 
@@ -287,6 +288,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Interval during problems | 60 s | 60–3600 | How often mtr runs while a target has packet loss or is down. |
 | Loss threshold | 0 % | 0–99 | Loss above this counts as a problem. 0 = any lost packet. |
 | Max parallel mtr processes | 16 | 1–128 | Limits load during large outages. |
+| Show reverse DNS names | on | | The hostname (PTR) of every hop after its address. Visitors only see names where they see the address. |
 | Keep mtr history | 30 days | 1–365 | |
 
 **Notifications**

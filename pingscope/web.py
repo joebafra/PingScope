@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Req
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __commit__, __version__, alerts as alerts_mod, importer, settings as settings_mod
+from . import __commit__, __version__, alerts as alerts_mod, importer, rdns, settings as settings_mod
 from .collector import Collector, measure
 from .db import Store
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
@@ -384,8 +384,10 @@ def _mask_hops(runs, show_hops, show_dest=False):
             if i == len(hubs) - 1:
                 if not show_dest:
                     h["host"] = "destination"
+                    h.pop("rdns", None)  # the name gives the address away
             elif not show_hops:
                 h["host"] = "hidden"
+                h.pop("rdns", None)
         if r.get("error"):
             r["error"] = "mtr could not run"
     return runs
@@ -407,6 +409,15 @@ def mtr(request: Request, key: str, before: int | None = None, since: int | None
     else:
         runs = store.mtr_list(x.path, before=before, since=since, limit=limit + 1, issues_only=only_issues)
         runs, more = runs[:limit], len(runs) > limit
+    s = store.settings()
+    for r in runs:  # names for older traceroutes, when the same hop has been looked up since
+        for h in r["hubs"]:
+            if not s["mtr_rdns"]:
+                h.pop("rdns", None)
+            elif "rdns" not in h and h["host"] != "???":
+                name = rdns.cached(h["host"])
+                if name:
+                    h["rdns"] = name
     if not current_user(request):
         groups = {g["id"]: g for g in store.groups()}
         _mask_hops(runs, store.settings()["public_show_hops"], _shows_address(x.target, groups))

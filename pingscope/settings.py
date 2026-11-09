@@ -49,6 +49,9 @@ SCHEMA = {
     "mtr_alert_loss_pct": (0, int, "Traceroutes (mtr)", "Loss threshold (%)",
                            "Loss above this percentage counts as a problem. 0 = any lost packet.", 0, 99),
     "mtr_max_parallel": (16, int, "Traceroutes (mtr)", "Max parallel mtr processes", "Limits load during large outages.", 1, 128),
+    "mtr_rdns": (True, bool, "Traceroutes (mtr)", "Show reverse DNS names",
+                 "Look up the hostname (PTR record) of every hop, IPv4 and IPv6, and show it after its address. Names are "
+                 "only shown to visitors where the address itself is shown.", None, None),
     "mtr_retention_days": (30, int, "Traceroutes (mtr)", "Keep mtr history (days)", "", 1, 365),
 
     "alert_email_from": ("", str, "Notifications", "Send emails from",

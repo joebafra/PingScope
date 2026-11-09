@@ -9,6 +9,8 @@ import logging
 import shutil
 import time
 
+from . import rdns
+
 log = logging.getLogger("pingscope")
 
 
@@ -63,6 +65,14 @@ class MtrScheduler:
                 except Exception as e:  # store failed runs too, so they show up in the history
                     hubs, error = [], (str(e)[:300] or e.__class__.__name__)
                     log.warning("mtr to %s failed: %s", address, error)
+                if hubs and s.get("mtr_rdns", True):
+                    try:  # reverse DNS names of the hops; a resolver problem never costs the traceroute itself
+                        names = await rdns.lookup([h["host"] for h in hubs if h["host"] != "???"])
+                        for h in hubs:
+                            if names.get(h["host"]):
+                                h["rdns"] = names[h["host"]]
+                    except Exception:
+                        log.exception("Reverse DNS for the traceroute to %s failed", address)
                 await asyncio.to_thread(self.store.insert_mtr, path, ts, reason, hubs, error, round(trigger_loss, 1))
         except Exception:
             log.exception("Storing mtr result failed")

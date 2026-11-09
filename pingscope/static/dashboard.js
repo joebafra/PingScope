@@ -451,7 +451,7 @@ function mtrEl(r, open){
     if (d._f) return; d._f = 1;
     if (r.error){ d.insertAdjacentHTML('beforeend', `<div class="hint" style="margin-bottom:10px">mtr error: <code>${esc(r.error)}</code></div>`); return; }
     const rows = r.hubs.map(h => { const none = h.host === '???', masked = h.host === 'hidden' || h.host === 'destination';
-      return `<tr class="${none ? 'nores' : ''}"><td>${h.n}</td><td${masked ? ' class="faint" style="font-family:inherit"' : ''}>${esc(h.host)}</td>` +
+      return `<tr class="${none ? 'nores' : ''}"><td>${h.n}</td><td${masked ? ' class="faint" style="font-family:inherit"' : ''}>${esc(h.host)}${h.rdns ? ` <span class="rdns">${esc(h.rdns)}</span>` : ''}</td>` +
         `<td style="color:${h.loss > 0 ? lossColor(h.loss) : 'inherit'};font-weight:${h.loss > 0 ? 600 : 400}">${h.loss == null ? '–' : h.loss.toFixed(1) + '%'}</td><td>${h.snt}</td>` +
         ['last', 'avg', 'best', 'wrst', 'stdev'].map(k => `<td>${none || h[k] == null ? '–' : h[k].toFixed(1)}</td>`).join('') + '</tr>'; }).join('');
     d.insertAdjacentHTML('beforeend', `<div class="hops"><table><thead><tr><th>#</th><th>Host</th><th>Loss</th><th>Sent</th><th>Last</th><th>Avg</th><th>Best</th><th>Worst</th><th>StDev</th></tr></thead><tbody>${rows}</tbody></table>` +
