@@ -131,7 +131,7 @@ function viewTargets(){
 function renderTree(){
   const box = $('#gtree'); if (!box) return;
   const count = gid => { const ids = new Set([gid, ...descendants(gid)]); return A.data.targets.filter(t => ids.has(t.group_id)).length; };
-  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" aria-label="hidden">🔒</span>' : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' <span title="Notifications on" aria-label="notifications on">🔔</span>' : ''}${g.show_addresses ? ' <span title="IP addresses shown to visitors" aria-label="IP addresses shown to visitors">🌐</span>' : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
+  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' ' + PS.icon('lock', 'Hidden from visitors') : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' ' + PS.icon('bell', 'Notifications on') : ''}${g.show_addresses ? ' ' + PS.icon('globe', 'IP addresses shown to visitors') : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
     (kids(g.id).length ? `<ul>${kids(g.id).map(node).join('')}</ul>` : '') + '</li>';
   box.innerHTML = `<div class="row" style="padding:2px 4px 8px"><b class="grow">Groups</b><button class="btn sm" id="addTop">+ Group</button></div>` +
     `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>` +
@@ -196,14 +196,14 @@ async function renderOfflinePane(){
   $('#offbody').outerHTML = `<div class="tblwrap"><table class="tbl ttbl"><thead><tr><th style="width:28px"><input type="checkbox" id="selAll"></th><th>Name</th><th class="hide-sm">Group</th><th>Type</th><th class="hide-sm">Host</th><th>Offline since</th><th>Reason</th><th></th></tr></thead><tbody>` +
     (rows.length ? rows.map(o => { const t = byId.get(o.id);
       return `<tr data-t="${t.id}"><td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' <span title="No alerts for this target">🔕</span>' : ''}</td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' ' + PS.icon('bell-off', 'No alerts for this target') : ''}</td>
         <td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td><td>${probeBadge(t.probe)}</td>
         <td class="hide-sm mono small wrap">${esc(t.host || t.host_v6)}</td>
         <td class="nowrap">${o.never ? `<span style="color:var(--bad)">never replied</span>${o.since ? `<div class="faint small">added ${fmtShort(o.since)}</div>` : ''}`
           : `<b style="color:var(--bad)">${fmtDuration(r.now - o.since)}</b><div class="faint small">since ${fmtShort(o.since)}</div>`}</td>
         <td class="small">${o.reason === 'unresolved' ? 'hostname does not resolve' : 'no reply'}</td>
         <td class="acts"><button class="btn sm tedit">Edit</button></td></tr>`; }).join('')
-      : `<tr><td colspan="8" class="empty">${minDays ? 'No targets offline for that long.' : 'All targets are online. 🎉'}</td></tr>`) +
+      : `<tr><td colspan="8" class="empty">${minDays ? 'No targets offline for that long.' : 'All targets are online.'}</td></tr>`) +
     '</tbody></table></div><p class="muted small">Tip: select targets and use <b>Delete</b> or <b>Disable</b> above the list. Disabled targets keep their history and stop being measured.</p>';
   renderBulk();
   const sa = $('#selAll');
@@ -231,7 +231,7 @@ function renderTargetsPane(){
   pane.innerHTML = `<div class="phead"><div style="margin-right:auto;min-width:0">` +
       (g ? `<div class="muted small">${esc(gPath(g.id).slice(0, -1).map(x => x.name).join(' › ') || 'Top level')}</div>` : '') +
       `<h2 style="margin:0">${g ? esc(g.name) : 'All targets'}</h2>` +
-      (g ? `<div class="muted small">${g.hidden_effective ? '🔒 Hidden from visitors · ' : g.show_addresses_effective ? '🌐 IP addresses shown to visitors · ' : ''}${alertSummary(g)} · ${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
+      (g ? `<div class="muted small">${g.hidden_effective ? PS.icon('lock') + ' Hidden from visitors · ' : g.show_addresses_effective ? PS.icon('globe') + ' IP addresses shown to visitors · ' : ''}${alertSummary(g)} · ${g.sort_mode === 'name' ? 'Targets sorted by name (A → Z)' : 'Manual order'} · <a href="#" id="gSort">${g.sort_mode === 'name' ? 'switch to manual' : 'sort A → Z'}</a></div>` : '') + '</div>' +
       (g ? `<button class="btn" id="gEdit">Edit group</button><button class="btn" id="gSub">+ Subgroup</button>` : '') +
       `<button class="btn primary" id="tAdd" ${A.data.groups.length ? '' : 'disabled'}>+ Add target</button></div>` +
     `<div class="row" style="margin-bottom:10px"><input id="tq" type="search" placeholder="Search all targets…" value="${esc(A.q)}"></div>` +
@@ -241,7 +241,7 @@ function renderTargetsPane(){
       `<th>Type</th><th class="hide-sm">Host</th><th class="hide-sm hide-md">IPv6</th><th>Status</th><th></th></tr></thead><tbody>` +
     (ts.length ? ts.map((t, i) => `<tr data-t="${t.id}" draggable="true" class="${t.enabled ? '' : 'off'}">
         <td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' <span title="No alerts for this target">🔕</span>' : ''}${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' ' + PS.icon('bell-off', 'No alerts for this target') : ''}${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
         ${showGroup ? `<td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td>` : ''}
         <td>${probeBadge(t.probe)}</td>
         <td class="hide-sm mono small wrap">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
@@ -287,7 +287,7 @@ function renderBulk(){
   box.innerHTML = `<div class="bulk"><b>${A.sel.size} selected</b>
     <select id="bulkGroup"><option value="">Move to group…</option>${groupOptions(null)}</select>
     <button class="btn sm" data-a="enable">Enable</button><button class="btn sm" data-a="disable">Disable</button>
-    <button class="btn sm" data-a="alerts_off">🔕 No alerts</button><button class="btn sm" data-a="alerts_on">🔔 Alerts on</button>
+    <button class="btn sm" data-a="alerts_off">${PS.icon('bell-off')} No alerts</button><button class="btn sm" data-a="alerts_on">${PS.icon('bell')} Alerts on</button>
     <button class="btn sm danger" data-a="delete">Delete</button><button class="btn sm ghost" data-a="clear">Clear selection</button></div>`;
   $('#bulkGroup').onchange = e => e.target.value && bulk('move', [...A.sel], {group_id: +e.target.value});
   box.onclick = e => {
@@ -555,8 +555,8 @@ async function loadPreview(g){
   if (r.rows.length) html += `<details ${r.rows.length <= 8 ? 'open' : ''}><summary>Show targets</summary><div class="plist"><table>${r.rows.map(x => `<tr>
       <td><b>${esc(x.name)}</b> <span class="badge">IPv${x.family}</span>${x.open ? ' <span class="akind loss" style="font-size:11px">now</span>' : ''}<div class="muted small">${esc(x.group)}</div></td>
       <td class="small" style="white-space:nowrap">${x.alerts}× · ${fmtDur(x.minutes * 60)}<div class="muted">worst ${x.worst.toFixed(0)}%${x.down ? ` · ${x.down}× down` : ''}${x.rounds ? ` · own: ${x.rounds} rounds` : ''}</div></td>
-      <td style="text-align:right"><button type="button" class="btn sm" data-skip="${x.target_id}">🔕 Skip</button></td></tr>`).join('')}</table></div></details>`;
-  if (r.skipped.length) html += `<details><summary>Skipped targets (${r.skipped.length})</summary><div class="plist"><table>${r.skipped.map(x => `<tr><td>🔕 ${esc(x.name)}</td>
+      <td style="text-align:right"><button type="button" class="btn sm" data-skip="${x.target_id}">${PS.icon('bell-off')} Skip</button></td></tr>`).join('')}</table></div></details>`;
+  if (r.skipped.length) html += `<details><summary>Skipped targets (${r.skipped.length})</summary><div class="plist"><table>${r.skipped.map(x => `<tr><td>${PS.icon('bell-off')} ${esc(x.name)}</td>
       <td style="text-align:right"><button type="button" class="btn sm" data-unskip="${x.id}">Include again</button></td></tr>`).join('')}</table></div></details>`;
   box.innerHTML = html;
   $('#pvDays').onchange = e => { gPrevDays = +e.target.value; loadPreview(g); };
@@ -598,7 +598,7 @@ async function loadIpv6(){
 function renderIpv6(){
   const items = A.ipv6.items, withC = items.filter(i => i.candidates.length);
   const box = $('#ipv6list');
-  if (!items.length){ box.innerHTML = '<div class="empty">Every target is already measured over IPv6. 🎉</div>'; return; }
+  if (!items.length){ box.innerHTML = '<div class="empty">Every target is already measured over IPv6.</div>'; return; }
   const row = i => `<tr data-id="${i.id}"><td><input type="checkbox" class="pick"></td>
     <td><b>${esc(i.name)}</b> ${probeBadge(i.probe)}<div class="faint small">${esc(i.group)}</div></td>
     <td class="mono small hide-sm">${esc(i.host)}</td>
@@ -631,7 +631,7 @@ function renderIpv6(){
 function viewImport(){
   main.innerHTML = `<div class="card pad" style="max-width:1000px;margin-bottom:16px">
     <h2>Import</h2>
-    <p class="muted" style="margin:4px 0 14px">Paste the <b>Targets</b> section of a SmokePing config (a complete config file also works), or a PingScope JSON export. Nested groups, FPing, FPing6, DNS and TCPPing probes are converted.</p>
+    <p class="muted" style="margin:4px 0 14px">Paste the <b>Targets</b> section of a SmokePing config (a complete config file also works), or a PingScope JSON export. Nested groups, FPing, FPing6, DNS and TCPPing probes are converted. Using your own probes, such as FPingFast? Paste the <b>Probes</b> section as well, so their settings come along.</p>
     <div class="row" style="margin-bottom:8px"><input type="file" id="ifile" accept=".txt,.conf,.json,text/*" style="width:auto"><span class="muted small">or paste below</span></div>
     <textarea id="itext" rows="12" placeholder="*** Targets ***&#10;probe = FPing&#10;&#10;+ dns&#10;menu = DNS&#10;title = DNS servers&#10;&#10;++ cloudflare&#10;host = 1.1.1.1"></textarea>
     <div style="margin:12px 0">
@@ -667,7 +667,7 @@ function viewImport(){
       const r = await api('api/admin/import/preview', {method: 'POST', body: {text: text.value, add_known_ipv6: $('#iknown').checked}});
       A.previewText = text.value;
       const st = r.stats;
-      const tree = list => `<ul>${list.map(g => `<li>📁 ${esc(g.name)} <span class="faint">${g.targets ? g.targets + ' targets' : ''}</span>${g.groups.length ? tree(g.groups) : ''}</li>`).join('')}</ul>`;
+      const tree = list => `<ul>${list.map(g => `<li>${PS.icon('folder')} ${esc(g.name)} <span class="faint">${g.targets ? g.targets + ' targets' : ''}</span>${g.groups.length ? tree(g.groups) : ''}</li>`).join('')}</ul>`;
       $('#ipreviewbox').innerHTML = `<div style="margin-bottom:10px">
         <span class="stat"><b>${st.groups}</b><span class="muted small">groups</span></span>
         <span class="stat"><b>${st.targets}</b><span class="muted small">targets (${Object.entries(st.by_probe).map(([k, v]) => `${v} ${k}`).join(', ')})</span></span>
@@ -757,7 +757,7 @@ function alertSummary(g, plain){
   if (e.loss) parts.push(`loss ≥ ${e.loss}%`);
   if (e.down) parts.push('down');
   const ch = [e.telegram && 'Telegram', e.pushover && 'Pushover', e.email && 'email'].filter(Boolean);
-  return `${plain ? '' : '🔔 '}alerts on ${parts.join(' or ')} after ${e.rounds || A.data.settings.alert_after_rounds} rounds, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
+  return `${plain ? '' : PS.icon('bell') + ' '}alerts on ${parts.join(' or ')} after ${e.rounds || A.data.settings.alert_after_rounds} rounds, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
 }
 const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
 async function viewAlerts(){

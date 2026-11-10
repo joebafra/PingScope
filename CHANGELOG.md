@@ -2,6 +2,22 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
 
+## 0.015 — 2026-11-10
+
+### Changed
+
+- **No more emoji in the interface.** The lock, bell, globe, folder and magnifier are now small monochrome line icons in the text colour, so they look the same on every system and fit the rest of the design. Notification messages (Telegram, Pushover, email) are unchanged.
+- *Public dashboard* setting: the help text says that the read-only API follows it, and that turning it off requires a login for the dashboard and the API.
+
+### Fixed
+
+- **SmokePing import of custom probes** such as `FPingFast` or `FPing4` whose `*** Probes ***` section wasn't pasted (often it is in a separate `@include` file): the probe type is recognised by its name (`FPing…` → ping, `FPing6…` → IPv6 ping, `DNS…` → DNS, `TCPPing…` → TCP) instead of always becoming ping, and there is one warning per probe with the number of targets, plus advice to paste the Probes section to keep its settings. Previously every target gave its own "not supported" warning.
+- SmokePing import: `@include` lines give a clear warning to paste the contents of that file instead of "not understood".
+
+### Docs
+
+- README: how the collector runs in parallel (asyncio, fping and mtr as separate processes), and which SmokePing settings (`forks`, `concurrentprobes`) aren't needed.
+
 ## 0.014 — 2026-11-10
 
 ### Fixed

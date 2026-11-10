@@ -347,6 +347,18 @@ const PS = (() => {
     paint();
   }
 
+  // Small monochrome line icons, in the text colour (instead of emoji, which look different on every system)
+  const ICONS = {
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    'bell-off': '<path d="M8.7 3A6 6 0 0 1 18 8c0 2 .2 3.6.6 5"/><path d="M17 17H3s3-2 3-9c0-.6.1-1.2.3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  };
+  const icon = (name, title) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"` +
+    (title ? ` role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>` : ' aria-hidden="true">') + `${ICONS[name]}</svg>`;
+
   // Tiny copy button next to an address. navigator.clipboard only works over HTTPS (or localhost), so plain
   // http://<ip> falls back to a hidden textarea + execCommand('copy').
   const ICON_COPY = '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
@@ -388,5 +400,5 @@ const PS = (() => {
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
-          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone};
+          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone, icon};
 })();

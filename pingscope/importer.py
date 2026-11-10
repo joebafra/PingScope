@@ -39,6 +39,9 @@ OUTDATED = {
 
 PROBE_MAP = {"fping": ("ping", "auto"), "fping6": ("ping", "ipv6"), "dns": ("dns", "auto"),
              "tcpping": ("tcp", "auto"), "fpingcontinuous": ("ping", "auto")}
+# A probe instance whose definition wasn't pasted: guess its type from the name (FPingFast, FPing6Slow, DNSQuad9 …)
+PROBE_PREFIXES = ("fping6", "fping", "tcpping", "dns")
+PROBE_KIND = {("ping", "auto"): "ping", ("ping", "ipv6"): "IPv6 ping", ("dns", "auto"): "DNS", ("tcp", "auto"): "TCP"}
 
 _NODE = re.compile(r"^(\++)\s*(\S+)\s*$")
 _VAR = re.compile(r"^([A-Za-z_][\w-]*)\s*=\s*(.*?)\s*$")
@@ -61,6 +64,9 @@ def parse_smokeping(text):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith("@include"):
+            warnings.append(f"Line {no}: '{line[:80]}' can't be read here; paste the contents of that file in its place.")
+            continue
         m = _SECTION.match(line)
         if m:
             section = m.group(1).lower()
@@ -70,10 +76,12 @@ def parse_smokeping(text):
             if m:
                 name, level = m.group(2), len(m.group(1))
                 if level == 1:
-                    pbase = probe_defs[name.lower()] = {"name": name, "base": name.lower(), "vars": {}, "line": no}
+                    pbase = probe_defs[name.lower()] = {"name": name, "base": name.lower(), "module": name,
+                                                        "vars": {}, "line": no}
                     pcur = pbase
                 else:
                     pcur = probe_defs[name.lower()] = {"name": name, "base": pbase["base"] if pbase else name.lower(),
+                                                       "module": pbase["name"] if pbase else name,
                                                        "vars": dict(pbase["vars"]) if pbase else {}, "line": no}
                 continue
             m = _VAR.match(line)
@@ -109,6 +117,7 @@ def parse_smokeping(text):
         return _SUFFIX.sub("", " ".join(name.split()))
 
     steps = {}  # probe step (seconds) that differs from PingScope's interval -> probe names
+    unknown = {}  # probe that isn't defined or supported -> how its targets were imported (one warning per probe)
 
     def probe_settings(t, pdef, v):
         """Settings from a SmokePing probe definition: pings, packetsize, timeout, hostinterval, offset."""
@@ -141,13 +150,14 @@ def parse_smokeping(text):
     def to_target(n, inh):
         v = {**inh, **n["vars"]}
         probe_raw = (v.get("probe") or "FPing").strip()
-        pdef = probe_defs.get(probe_raw.lower())
-        probe, families = PROBE_MAP.get(probe_raw.lower(), (None, "auto"))
-        if probe is None and pdef:
-            probe, families = PROBE_MAP.get(pdef["base"], (None, "auto"))
+        key = probe_raw.lower()
+        pdef = probe_defs.get(key)
+        probe, families = PROBE_MAP.get(key) or (PROBE_MAP.get(pdef["base"]) if pdef else None) or (None, "auto")
         if probe is None:
-            warnings.append(f"Line {n['line']}: probe '{probe_raw}' is not supported; '{node_name(n)}' imported as ping.")
-            probe = "ping"
+            guess = None if pdef else next((PROBE_MAP[p] for p in PROBE_PREFIXES if key.startswith(p)), None)
+            u = unknown.setdefault(probe_raw, {"line": n["line"], "targets": 0, "pdef": pdef, "guess": guess})
+            u["targets"] += 1
+            probe, families = guess or ("ping", "auto")
         host = (v.get("server") if probe == "dns" and v.get("server") else v.get("host", "")).strip()
         t = {"name": node_name(n), "probe": probe, "host": host, "families": families}
         if probe == "dns":
@@ -180,6 +190,22 @@ def parse_smokeping(text):
         return group
 
     top = walk(root, {"probe": root["vars"].get("probe", "FPing")}, [])
+    for name, u in unknown.items():
+        many = f"its {u['targets']} targets are" if u["targets"] > 1 else "its target is"
+        if u["pdef"]:
+            module = u["pdef"]["module"]
+            warnings.append(f"Line {u['line']}: probe '{name}'{f' ({module})' if module != name else ''} is not supported "
+                            f"(PingScope measures ping, DNS and TCP); {many} imported as ping.")
+        elif u["guess"]:
+            warnings.append(f"Line {u['line']}: probe '{name}' isn't defined in this config, so its settings are unknown; "
+                            f"{many} imported as {PROBE_KIND[u['guess']]} with the default settings.")
+        else:
+            warnings.append(f"Line {u['line']}: probe '{name}' isn't defined in this config and isn't a known type; "
+                            f"{many} imported as ping.")
+    if any(not u["pdef"] for u in unknown.values()):
+        warnings.append("To keep the settings of these probes (pings, packet size, timeout, step and offset), paste the "
+                        "*** Probes *** section as well. SmokePing often keeps it in a separate file, such as "
+                        "/etc/smokeping/config.d/Probes.")
     for step, names in sorted(steps.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
         n = int(step) // DEFAULTS["interval"] if step.isdigit() else 0
         what = f"Probe{'s' if len(names) > 1 else ''} {', '.join(sorted(names))} use{'' if len(names) > 1 else 's'} step = {step}"

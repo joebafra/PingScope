@@ -15,7 +15,9 @@ SCHEMA = {
                   "server's time zone (the TZ setting of the server, shown under Status), like SmokePing. Choose Server "
                   "when visitors' browsers report UTC, for example because of privacy settings.", None, None),
     "public_dashboard": (True, bool, "Site", "Public dashboard",
-                         "Allow viewing graphs without logging in. The admin panel always requires a login.", None, None),
+                         "Allow viewing graphs without logging in. The read-only API the dashboard uses (/api/tree, "
+                         "/api/series, /api/mtr, /api/history) follows this setting: turn it off to require a login for "
+                         "both. The admin panel always requires a login.", None, None),
     "public_show_hops": (False, bool, "Site", "Show traceroute hops to visitors",
                          "Show the router addresses along the path in mtr reports. Hostnames and IP addresses of "
                          "targets are only shown to visitors in groups set to show them (Edit group); logged-in "

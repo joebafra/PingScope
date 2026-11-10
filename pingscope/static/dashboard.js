@@ -71,7 +71,7 @@ function renderNav(){
     const st = worst(g._all.flatMap(t => t.series.filter(s => S.fam === 'all' || s.family === +S.fam).map(status)));
     return `<li class="${open ? 'open' : ''}" data-g="${g.id}"><a href="#/g/${g.id}" class="${sel === g.id ? 'on' : ''}">` +
       `<span class="caret" data-toggle="${g.id}">${ch.length ? '▸' : ''}</span><span class="dot ${st}"></span>` +
-      `<span class="name">${esc(g.name)}${g.hidden ? ' <span class="faint" title="Hidden from visitors">🔒</span>' : ''}</span><span class="cnt">${g._all.length}</span></a>` +
+      `<span class="name">${esc(g.name)}${g.hidden ? ' ' + PS.icon('lock', 'Hidden from visitors') : ''}</span><span class="cnt">${g._all.length}</span></a>` +
       (ch.length ? `<ul>${ch.map(node).join('')}</ul>` : '') + '</li>';
   };
   $('#nav').innerHTML =
@@ -140,7 +140,7 @@ function zoomBar(){
   if (!ranges.length){ bar?.remove(); return; }
   if (!bar){ bar = document.createElement('div'); bar.id = 'zoombar'; main.prepend(bar); }
   const many = ranges.length > 1 || currentRoute().view === 'target';
-  bar.innerHTML = ranges.map(r => `<div><span>🔍 Zoomed in${many ? ` (${esc(RANGES[r])})` : ''}: <b>${zoomLabel(S.zoom[r])}</b></span><button class="btn sm" data-unzoom="${r}">Reset zoom</button></div>`).join('');
+  bar.innerHTML = ranges.map(r => `<div><span>${PS.icon('search')} Zoomed in${many ? ` (${esc(RANGES[r])})` : ''}: <b>${zoomLabel(S.zoom[r])}</b></span><button class="btn sm" data-unzoom="${r}">Reset zoom</button></div>`).join('');
   bar.onclick = e => { const b = e.target.closest('[data-unzoom]'); if (b){ delete S.zoom[b.dataset.unzoom]; applyZoom(b.dataset.unzoom); } };
 }
 
@@ -212,7 +212,7 @@ function fillOverview(problemsOnly){
     `<td class="col-group tpath">${esc(pathText(t.group_id))}</td><td class="col-type">${probeBadge(t.probe)}</td>` +
     fams.map(f => `<td class="col-fam">${valHTML(famSeries(t, f))}</td>`).join('') +
     `<td class="col-both">${fams.map(f => `<div class="small"><span class="faint">v${f}</span> ${valHTML(famSeries(t, f))}</div>`).join('')}</td></tr>`).join('')
-    : `<tr><td colspan="5" class="empty">${problemsOnly ? 'No problems right now. 🎉' : S.q ? 'No targets match your search.' : 'No targets yet. Add them in the admin panel.'}</td></tr>`;
+    : `<tr><td colspan="5" class="empty">${problemsOnly ? 'No problems right now.' : S.q ? 'No targets match your search.' : 'No targets yet. Add them in the admin panel.'}</td></tr>`;
 }
 
 // ---------- group page ----------
@@ -254,7 +254,7 @@ async function viewHistory(){
   const byDay = new Map();
   for (const a of done){ const k = dayLabel(a.started); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(a); }
   for (const [k, list] of byDay) html += `<h3>${esc(k)} <span class="muted small" style="text-transform:none;letter-spacing:0">· ${list.length} alert${list.length === 1 ? '' : 's'}</span></h3>${table(list)}`;
-  $('#hbody').innerHTML = html || `<div class="empty">${S.q ? 'No alerts match your search.' : 'No alerts in this period. 🎉'}</div>`;
+  $('#hbody').innerHTML = html || `<div class="empty">${S.q ? 'No alerts match your search.' : 'No alerts in this period.'}</div>`;
   $('#hcount').textContent = S.q ? `${rows.length} of ${r.alerts.length} alerts` : '';
 }
 function viewGroup(gid){

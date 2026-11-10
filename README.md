@@ -162,6 +162,8 @@ Paste your SmokePing `Targets` section (or a whole config file, or upload it) in
 - Nested groups (`+`, `++`, `+++`) become groups and subgroups, using `title` as the name.
 - `probe` is inherited like in SmokePing: `FPing` → ping, `FPing6` → ping over IPv6 only, `DNS` → DNS (with `lookup` and `server`), `TCPPing` → TCP.
 - Your own probes from the `*** Probes ***` section (for example `++ FPingGateway` under `+ FPing`) are understood too: their `pings`, `packetsize`, `timeout`, `hostinterval` and `offset = random` become the probe settings of the targets that use them. A probe `step` that is a multiple of the 60 s interval (e.g. `step = 300`) becomes *measure every 5 rounds* on its targets.
+- **Paste the `*** Probes ***` section along with the targets**, or the probe settings are unknown. SmokePing often keeps it in a separate file (`@include /etc/smokeping/config.d/Probes`); included files can't be read, so paste their contents. A probe that isn't defined is recognised by its name (`FPingFast` → ping, `FPing6Slow` → ping over IPv6, `DNSQuad9` → DNS, `TCPPing443` → TCP) and imported with the default settings, with one warning per probe.
+- SmokePing's `forks` and `concurrentprobes` aren't needed: every round all targets are measured in parallel (see [How it works](#how-it-works)). `mininterval` is ignored; fping waits 5 ms between packets to different hosts.
 - The known IPv6 addresses of the **root servers and large public resolvers** (Google, Cloudflare, Quad9, OpenDNS, NextDNS) are added automatically, so they're measured over IPv6 right away.
 - The preview shows the resulting tree and points out outdated addresses and duplicate targets.
 - *Add to existing* reuses groups with the same name and skips identical targets; *Replace everything* starts fresh.
@@ -256,7 +258,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Dashboard style | Modern | | *Modern* follows the visitor's light/dark preference; *Classic* is SmokePing-style. |
 | Periods | 3h, day, week, month, year | | Which of 1h, 3h, 6h, 12h, day, week, month and year are offered in the header and shown on a target page. |
 | Time zone of the times shown | Visitor | | *Visitor*: each browser's own time zone. *Server*: the server's `TZ` for everyone, like SmokePing. |
-| Public dashboard | on | | Allow viewing graphs without logging in. The admin panel always requires a login. |
+| Public dashboard | on | | Allow viewing graphs without logging in. The read-only API the dashboard uses follows this setting: off requires a login for both. The admin panel always requires a login. |
 | Show traceroute hops to visitors | off | | Show the router addresses along the path in mtr reports. Target hostnames and addresses are only shown in groups set to show them. |
 
 **Measurements**
@@ -345,6 +347,7 @@ For `deploy.sh` (set them in the systemd service): `PINGSCOPE_BRANCH` (branch to
 ```
 
 - Each target becomes one **series** per address family (`<target id>-4`, `<target id>-6`). Every round, all probe types run in parallel and store every round-trip time of every series.
+- **Parallel, not multithreaded:** PingScope is one Python process with an asyncio event loop. Measuring is waiting for replies, not computing, so one loop handles hundreds of targets. fping and mtr run as separate processes (one fping per address family and set of probe settings, mtr up to *Max parallel mtr processes* at once), which the operating system spreads over the CPU cores; DNS and TCP probes run concurrently inside the process. With *When targets are measured → Spread over the round* the probes are spread evenly over the interval instead of all starting at once.
 - **Full-resolution data** (all probe RTTs per round) is kept for 14 days by default. Older data is **summarised per hour** (20 quantiles plus sent/lost) and kept indefinitely, so a year graph still shows the smoke.
 - The 3-hour, day and week graphs use full-resolution data; month and year use the hourly summaries. Zoomed graphs use full-resolution data when it is still there.
 - **Disk usage** is roughly 2 MB per series per two weeks, plus 1 MB per series per year: 300 series need about 1 GB.
