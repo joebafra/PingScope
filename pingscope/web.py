@@ -194,7 +194,7 @@ def session(request: Request):
     s = store.settings()
     return {"user": current_user(request), "setup_required": store.user_count() == 0,
             "public": s["public_dashboard"], "site_title": s["site_title"], "version": __version__, "commit": __commit__,
-            "tz": _display_tz(s), "server_tz": SERVER_TZ}
+            "tz": _display_tz(s), "server_tz": SERVER_TZ if current_user(request) else None}
 
 
 @app.post("/api/login")
@@ -238,6 +238,9 @@ def setup(request: Request, response: Response, body: dict = Body(...)):
 
 # ---- public data -----------------------------------------------------------------------
 
+VISITOR_GROUP_FIELDS = ("id", "parent_id", "name", "sort", "sort_mode")
+
+
 def _series_json(x, private=True, address=False):
     if not private:  # visitors: no hostnames, addresses or error texts that contain them
         out = {"key": x.key, "family": x.family, "unresolved": x.address is None,
@@ -277,10 +280,8 @@ def tree(request: Request, _=Depends(can_view)):
     groups = store.groups()
     by_id = {g["id"]: dict(g) for g in groups}  # unfiltered, for the "show addresses" setting
     if not admin:  # hidden groups (and everything below them) don't exist for visitors
-        groups = [g for g in groups if not g["hidden_effective"]]
-        for g in groups:
-            for k in [k for k in g if k.startswith(("alert_", "hidden", "show_addresses"))]:
-                g.pop(k, None)  # notification settings (incl. Telegram chat IDs), visibility settings
+        # visitors get only what the dashboard needs: an allow-list, so new group settings never leak by accident
+        groups = [{k: g[k] for k in VISITOR_GROUP_FIELDS} for g in groups if not g["hidden_effective"]]
     visible = {g["id"] for g in groups}
     targets = []
     for t in store.targets(enabled_only=True):

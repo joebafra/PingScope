@@ -2,6 +2,17 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
 
+## 0.014 — 2026-11-10
+
+### Fixed
+
+- **Public API: only the fields the dashboard needs.** Visitors (not logged in) got the new *measure every* settings of groups in `/api/tree`, because visitor data was filtered with a block-list. It is now an allow-list (id, name, parent, order), so new settings can't leak this way again. Thanks to the user who reported it.
+- `/api/session` tells only logged-in users the server's time zone.
+
+### Docs
+
+- README: the read-only API is what the public dashboard shows; turn *Public dashboard* off to require a login.
+
 ## 0.013 — 2026-11-09
 
 ### Added
