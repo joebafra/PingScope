@@ -2,7 +2,7 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
-## 0.019 — 2026-11-10
+## 0.019 — 2026-11-10 · [a95589f](https://github.com/joebafra/PingScope/commit/a95589f)
 
 ### Changed
 
