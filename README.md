@@ -191,7 +191,7 @@ sudo git clone https://github.com/joebafra/PingScope.git /opt/pingscope
 cd /opt/pingscope && sudo ./install.sh
 ```
 
-The installer asks for your hostname and email, sets up Docker, the **Let's Encrypt certificate** (with HTTP→HTTPS redirect), the firewall and automatic updates, and prints a **setup code**. Open `https://<your-hostname>/admin`, enter the code and create your admin account. Then add targets, or import your SmokePing config.
+The installer asks for your hostname, email and port (8080, or another one if that's taken, for example by a UniFi controller), sets up Docker, the **Let's Encrypt certificate** (with HTTP→HTTPS redirect), the firewall and automatic updates, and prints a **setup code**. Open `https://<your-hostname>/admin`, enter the code and create your admin account. Then add targets, or import your SmokePing config.
 
 - Full guide, including installing without Docker and using another reverse proxy: **[docs/INSTALL.md](docs/INSTALL.md)**
 - HTTPS details and changing the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**
@@ -323,7 +323,7 @@ Per **group** you set notifications (on / off / same as the parent group), the l
 | `ACME_EMAIL` | | Email for Let's Encrypt expiry notices (optional). |
 | `COMPOSE_PROFILES` | `https` | `https` starts Caddy; empty runs without HTTPS. |
 | `PINGSCOPE_LISTEN` | `127.0.0.1` | Listen address. Use `0.0.0.0` without HTTPS. (`0.0.0.0` when run from source without it set.) |
-| `PINGSCOPE_PORT` | `8080` | Port PingScope listens on. |
+| `PINGSCOPE_PORT` | `8080` | Port PingScope listens on. It must be free on the server (host networking), also behind HTTPS; `install.sh` asks for it. |
 | `PINGSCOPE_TRUSTED_PROXIES` | `127.0.0.1` | Reverse proxies whose `X-Forwarded-*` headers are trusted. |
 | `PINGSCOPE_DB` | `/data/pingscope.db` | Database file (`data/pingscope.db` when run from source). |
 | `TZ` | `Europe/Amsterdam` | Time zone for log lines and alert messages. |
@@ -467,6 +467,7 @@ Found a security problem? Please report it privately; see [SECURITY.md](SECURITY
 |---|---|
 | Browser warning / no certificate | **Admin → Settings → HTTPS** and `sudo docker logs pingscope-caddy`. Usually DNS doesn't point to the server yet, or port 80 is blocked. |
 | All IPv6 graphs are down | Does the server have IPv6? `ping -6 2001:4860:4860::8888` |
+| Port 8080 is already in use (for example by a UniFi controller), or PingScope doesn't start | PingScope uses the server's network directly, so its port must be free on the server, with or without HTTPS. Run `sudo ./install.sh` again and choose another port (it warns when a port is taken), or set `PINGSCOPE_PORT=9090` in `.env` and run `sudo docker compose up -d`. Without HTTPS, open the new port in the firewall (`sudo ufw allow 9090/tcp`). |
 | Ping targets all down, DNS targets fine | The container needs `NET_RAW` (already in `docker-compose.yml`). Check `sudo docker logs pingscope`. |
 | Loss always on the same ping of a round | Run `python -m pingscope ping-test --only <name>` to see the pattern. |
 | Forgot the admin password | `sudo docker exec -it pingscope python -m pingscope create-admin` creates a new admin. |

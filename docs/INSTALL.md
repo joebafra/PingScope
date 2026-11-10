@@ -152,11 +152,12 @@ The installer will:
 
 1. Install Docker if it isn't there yet (via get.docker.com).
 2. Ask for your **hostname** (for example `ping.example.nl`) and an **email address** for Let's Encrypt.
-3. Check that the hostname's DNS points to this server, and whether the server has IPv6.
-4. Write the settings to `/opt/pingscope/.env`.
-5. Open ports 80 and 443 in `ufw` if that firewall is active.
-6. Start PingScope and Caddy. Caddy requests the SSL certificate (see [section 4](#4-https--ssl-certificate-lets-encrypt)).
-7. Print the address and a one-time **setup code**.
+3. Ask for the **port** PingScope listens on (8080 by default). Choose another one if 8080 is already in use on the server, for example by a UniFi controller; the installer warns when a port is taken and suggests a free one. You can also pass it: `sudo PINGSCOPE_PORT=9090 ./install.sh`.
+4. Check that the hostname's DNS points to this server, and whether the server has IPv6.
+5. Write the settings to `/opt/pingscope/.env`.
+6. Open ports 80 and 443 in `ufw` if that firewall is active (without a hostname: the chosen port).
+7. Start PingScope and Caddy. Caddy requests the SSL certificate (see [section 4](#4-https--ssl-certificate-lets-encrypt)).
+8. Print the address and a one-time **setup code**.
 
 ### 3.2 Create your admin account
 
@@ -283,7 +284,7 @@ Browsers will show a warning with staging certificates. Remove the line when eve
 
 ### 4.6 Without a hostname (no HTTPS)
 
-Run the installer and leave the hostname empty. PingScope then listens on `http://<server-ip>:8080` without HTTPS. Only use this on a trusted network.
+Run the installer and leave the hostname empty. PingScope then listens on `http://<server-ip>:8080` (or the port you chose) without HTTPS. Only use this on a trusted network.
 
 ---
 
@@ -515,6 +516,7 @@ Certificates are then handled by that web server (for example with certbot). If 
 | `git clone`: Permission denied (publickey) | Only for a private fork over SSH: the deploy key isn't added on GitHub, or `/root/.ssh/config` doesn't point to it. Test with `sudo ssh -T git@github.com`. For the public repository, clone over HTTPS: `https://github.com/joebafra/PingScope.git`. |
 | A new version on GitHub isn't installed | `sudo ./deploy.sh --status` and `sudo journalctl -u pingscope-deploy -n 50`. If that version failed before, it is skipped until a newer commit (or run `sudo ./deploy.sh --force`). |
 | All IPv6 graphs are down | Does the server have IPv6? `ping -6 2001:4860:4860::8888` |
+| Port 8080 is already in use (for example by a UniFi controller), or PingScope doesn't start | PingScope uses the server's network directly, so its port must be free on the server, with or without HTTPS. Run `sudo ./install.sh` again and choose another port (it warns when a port is taken), or set `PINGSCOPE_PORT=9090` in `.env` and run `sudo docker compose up -d`. Without HTTPS, open the new port in the firewall (`sudo ufw allow 9090/tcp`). |
 | Ping targets all down, DNS targets fine | The container needs `NET_RAW` (already in docker-compose.yml). Check `sudo docker logs pingscope`. |
 | Forgot admin password | `sudo docker exec -it pingscope python -m pingscope create-admin` creates a new admin. |
 | "Rounds may overlap" warning | Lower the probes per round or the probe spacing in Settings, or raise the interval. |

@@ -56,7 +56,7 @@ services:
 
 ## HTTP by IP address, or HTTPS
 
-**Plain HTTP works out of the box:** the container listens on all addresses, so open `http://<server-ip>:8080`. No hostname or certificate is needed. Open the port in the firewall if needed (`ufw allow 8080/tcp`), or use `-e PINGSCOPE_PORT=80` for `http://<server-ip>` without a port number.
+**Plain HTTP works out of the box:** the container listens on all addresses, so open `http://<server-ip>:8080`. No hostname or certificate is needed. Open the port in the firewall if needed (`ufw allow 8080/tcp`), or use `-e PINGSCOPE_PORT=80` for `http://<server-ip>` without a port number. Port 8080 already in use on the server, for example by a UniFi controller? Add `-e PINGSCOPE_PORT=9090` (any free port): with host networking the port must be free on the server itself.
 
 Without HTTPS the login and password go over the network unencrypted, so use plain HTTP on a trusted network (LAN, VPN) only.
 

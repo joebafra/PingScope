@@ -2,6 +2,16 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.019 — 2026-11-10
+
+### Changed
+
+- **`install.sh` asks for the port** PingScope listens on (8080 by default) and uses it everywhere: `.env`, the firewall, the health check and the printed address. It warns when a port is already in use on the server, names the program that uses it, and suggests a free one. Useful when a UniFi controller already listens on 8080. A port in `.env` is kept when you run the installer again, and `sudo PINGSCOPE_PORT=9090 ./install.sh` sets it in advance. Before, the installer always wrote 8080.
+
+### Docs
+
+- Troubleshooting for a port that's already in use, also for the Docker Hub image (`-e PINGSCOPE_PORT=9090`).
+
 ## 0.018 — 2026-11-10 · [566a571](https://github.com/joebafra/PingScope/commit/566a571)
 
 ### Changed
