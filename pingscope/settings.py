@@ -8,6 +8,10 @@ SCHEMA = {
               "Modern: the default look, follows the visitor's light/dark preference. "
               "Classic: SmokePing-style with a dark menu, framed graphs and the familiar legend under every graph.",
               None, None),
+    "show_icons": (True, bool, "Site", "Show icons",
+                   "Small line icons next to labels: a lock for hidden groups, a bell for notifications, a globe for "
+                   "groups that show IP addresses, a magnifier when zoomed in. Off shows text only. Buttons that "
+                   "consist of just an icon (copy, light/dark) keep it.", None, None),
     "periods": ("3h,1d,7d,30d,1y", "multi", "Site", "Periods",
                 "The periods offered in the header and shown on a target page, from short to long.", None, None),
     "time_zone": ("browser", str, "Site", "Time zone of the times shown",

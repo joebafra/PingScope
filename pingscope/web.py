@@ -167,24 +167,28 @@ def _asset_version():
 ASSET_VERSION = _asset_version()
 
 
-def _page(name):
+def _page(name, **attrs):
+    """A static page with versioned asset URLs and data-* attributes on <html> (set before the first paint)."""
     html = (STATIC / name).read_text(encoding="utf-8")
     html = re.sub(r'(static/[\w.-]+\.(?:js|css))"', lambda m: f'{m.group(1)}?v={ASSET_VERSION}"', html)
+    data = "".join(f' data-{k}="{v}"' for k, v in attrs.items())
+    html = html.replace('<html lang="en">', f'<html lang="en"{data}>', 1)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+def _icons(s):
+    return "on" if s.get("show_icons", True) else "off"
 
 
 @app.get("/")
 def index():
-    resp = _page("index.html")
-    theme = store.settings()["theme"]
-    resp.body = resp.body.replace(b'<html lang="en">', f'<html lang="en" data-theme="{theme}">'.encode(), 1)
-    resp.headers["content-length"] = str(len(resp.body))
-    return resp
+    s = store.settings()
+    return _page("index.html", theme=s["theme"], icons=_icons(s))
 
 
 @app.get("/admin")
 def admin_page():
-    return _page("admin.html")
+    return _page("admin.html", icons=_icons(store.settings()))
 
 
 # ---- session ------------------------------------------------------------------------
@@ -304,7 +308,8 @@ def tree(request: Request, _=Depends(can_view)):
         targets.append(item)
     shown_ids = {t["id"] for t in targets}
     return {
-        "site": {"title": s["site_title"], "remark": s["site_remark"], "theme": s["theme"], "tz": _display_tz(s)},
+        "site": {"title": s["site_title"], "remark": s["site_remark"], "theme": s["theme"], "tz": _display_tz(s),
+                 "icons": _icons(s)},
         "groups": groups, "targets": targets,
         "probes": {k: p.label for k, p in PROBES.items()},
         "interval": s["interval"], "last_run": collector.last_run, "now": int(time.time()),

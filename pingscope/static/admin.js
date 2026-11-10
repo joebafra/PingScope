@@ -68,6 +68,7 @@ async function load(){
   A.kids = new Map();
   for (const g of A.data.groups){ if (!A.kids.has(g.parent_id)) A.kids.set(g.parent_id, []); A.kids.get(g.parent_id).push(g); }
   A.probeMap = Object.fromEntries(A.data.probes.map(p => [p.name, p]));
+  PS.setIcons(A.data.settings.show_icons);
   if (A.gid !== 'all' && A.gid !== 'offline' && !A.groupMap.has(A.gid)) A.gid = 'all';
 }
 function route(){
@@ -131,7 +132,7 @@ function viewTargets(){
 function renderTree(){
   const box = $('#gtree'); if (!box) return;
   const count = gid => { const ids = new Set([gid, ...descendants(gid)]); return A.data.targets.filter(t => ids.has(t.group_id)).length; };
-  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' ' + PS.icon('lock', 'Hidden from visitors') : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' ' + PS.icon('bell', 'Notifications on') : ''}${g.show_addresses ? ' ' + PS.icon('globe', 'IP addresses shown to visitors') : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
+  const node = g => `<li><a href="#" data-g="${g.id}" class="${A.gid === g.id ? 'on' : ''}"${g.hidden_effective ? ' title="Hidden from visitors"' : ''}><span class="name">${esc(g.name)}${g.hidden ? ' ' + PS.icon('lock', 'Hidden from visitors', '(hidden)') : g.hidden_effective ? ' <span class="faint">(hidden)</span>' : ''}${g.alert_mode === 'on' ? ' ' + PS.icon('bell', 'Notifications on') : ''}${g.show_addresses ? ' ' + PS.icon('globe', 'IP addresses shown to visitors') : ''}</span><span class="cnt">${count(g.id)}</span></a>` +
     (kids(g.id).length ? `<ul>${kids(g.id).map(node).join('')}</ul>` : '') + '</li>';
   box.innerHTML = `<div class="row" style="padding:2px 4px 8px"><b class="grow">Groups</b><button class="btn sm" id="addTop">+ Group</button></div>` +
     `<ul><li><a href="#" data-g="all" class="${A.gid === 'all' ? 'on' : ''}"><span class="name">All targets</span><span class="cnt">${A.data.targets.length}</span></a></li>` +
@@ -196,7 +197,7 @@ async function renderOfflinePane(){
   $('#offbody').outerHTML = `<div class="tblwrap"><table class="tbl ttbl"><thead><tr><th style="width:28px"><input type="checkbox" id="selAll"></th><th>Name</th><th class="hide-sm">Group</th><th>Type</th><th class="hide-sm">Host</th><th>Offline since</th><th>Reason</th><th></th></tr></thead><tbody>` +
     (rows.length ? rows.map(o => { const t = byId.get(o.id);
       return `<tr data-t="${t.id}"><td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' ' + PS.icon('bell-off', 'No alerts for this target') : ''}</td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' ' + PS.icon('bell-off', 'No alerts for this target', '(no alerts)') : ''}</td>
         <td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td><td>${probeBadge(t.probe)}</td>
         <td class="hide-sm mono small wrap">${esc(t.host || t.host_v6)}</td>
         <td class="nowrap">${o.never ? `<span style="color:var(--bad)">never replied</span>${o.since ? `<div class="faint small">added ${fmtShort(o.since)}</div>` : ''}`
@@ -241,7 +242,7 @@ function renderTargetsPane(){
       `<th>Type</th><th class="hide-sm">Host</th><th class="hide-sm hide-md">IPv6</th><th>Status</th><th></th></tr></thead><tbody>` +
     (ts.length ? ts.map((t, i) => `<tr data-t="${t.id}" draggable="true" class="${t.enabled ? '' : 'off'}">
         <td><input type="checkbox" class="sel" ${A.sel.has(t.id) ? 'checked' : ''}></td>
-        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' ' + PS.icon('bell-off', 'No alerts for this target') : ''}${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
+        <td class="nm"><a href="#" class="tedit"><b>${esc(t.name)}</b></a>${t.alert_skip ? ' ' + PS.icon('bell-off', 'No alerts for this target', '(no alerts)') : ''}${t.note ? `<div class="faint small">${esc(t.note.slice(0, 80))}</div>` : ''}</td>
         ${showGroup ? `<td class="hide-sm small muted grp">${esc(pathText(t.group_id))}</td>` : ''}
         <td>${probeBadge(t.probe)}</td>
         <td class="hide-sm mono small wrap">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
@@ -719,6 +720,7 @@ function viewSettings(){
     try {
       const r = await api('api/admin/settings', {method: 'PUT', body});
       A.data.settings = r.settings; A.data.warnings = r.warnings;
+      PS.setIcons(r.settings.show_icons);
       $('#swarn').innerHTML = r.warnings.map(w => `<div class="warnbox">${esc(w)}</div>`).join('');
       $('#siteTitle').textContent = r.settings.site_title;
       for (const x of sch) if (x.type === 'secret'){ const el = e.target[x.key]; el.value = ''; el.placeholder = r.settings[x.key + '_set'] ? '•••••••• saved, leave empty to keep' : 'not set'; }

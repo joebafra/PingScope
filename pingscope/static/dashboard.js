@@ -71,7 +71,7 @@ function renderNav(){
     const st = worst(g._all.flatMap(t => t.series.filter(s => S.fam === 'all' || s.family === +S.fam).map(status)));
     return `<li class="${open ? 'open' : ''}" data-g="${g.id}"><a href="#/g/${g.id}" class="${sel === g.id ? 'on' : ''}">` +
       `<span class="caret" data-toggle="${g.id}">${ch.length ? '▸' : ''}</span><span class="dot ${st}"></span>` +
-      `<span class="name">${esc(g.name)}${g.hidden ? ' ' + PS.icon('lock', 'Hidden from visitors') : ''}</span><span class="cnt">${g._all.length}</span></a>` +
+      `<span class="name">${esc(g.name)}${g.hidden ? ' ' + PS.icon('lock', 'Hidden from visitors', '(hidden)') : ''}</span><span class="cnt">${g._all.length}</span></a>` +
       (ch.length ? `<ul>${ch.map(node).join('')}</ul>` : '') + '</li>';
   };
   $('#nav').innerHTML =
@@ -525,7 +525,7 @@ async function refresh(first){
       requestAnimationFrame(() => $$('canvas.chart').forEach(c => draw(c)));
     }
     $('#siteTitle').textContent = d.site.title;
-    PS.setTimeZone(d.site.tz);
+    PS.setTimeZone(d.site.tz); PS.setIcons(d.site.icons);
     const plist = periods().join(',');
     if (plist !== S.plist){
       S.plist = plist;

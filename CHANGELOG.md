@@ -2,6 +2,12 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
 
+## 0.016 — 2026-11-10
+
+### Added
+
+- **Show icons** setting (*Admin → Settings → Site*, on by default). Off removes the small line icons from the dashboard and the admin panel and shows text only: a hidden group reads "Core network (hidden)", a target without alerts "(no alerts)". Icon-only buttons (copy, light/dark) stay.
+
 ## 0.015 — 2026-11-10
 
 ### Changed

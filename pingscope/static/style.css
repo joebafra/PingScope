@@ -70,6 +70,9 @@ label.field .errmsg,div.field .errmsg{color:var(--bad);font-size:12px;margin-top
 /* small monochrome icons (PS.icon) */
 .ico{width:13px;height:13px;vertical-align:-2px;color:var(--faint);flex:none;display:inline-block}
 .btn .ico,.nav a.on .ico{color:inherit}
+.ico-alt{display:none;color:var(--faint)}
+:root[data-icons=off] .ico{display:none}
+:root[data-icons=off] .ico-alt{display:inline}
 /* tiny copy button next to an address */
 .copy{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;margin:0;border:0;border-radius:4px;background:transparent;color:var(--faint);cursor:pointer;flex:none;vertical-align:middle;align-self:center}
 .info .copy{margin-left:3px;vertical-align:-3px}

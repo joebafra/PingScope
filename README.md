@@ -256,6 +256,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Site title | `PingScope` | | Shown in the header and browser tab. |
 | Welcome text | | | Shown at the top of the overview page. |
 | Dashboard style | Modern | | *Modern* follows the visitor's light/dark preference; *Classic* is SmokePing-style. |
+| Show icons | on | | Small line icons next to labels (lock for hidden groups, bell for notifications, globe for groups that show IP addresses, magnifier when zoomed in). Off shows text only, such as "(hidden)". |
 | Periods | 3h, day, week, month, year | | Which of 1h, 3h, 6h, 12h, day, week, month and year are offered in the header and shown on a target page. |
 | Time zone of the times shown | Visitor | | *Visitor*: each browser's own time zone. *Server*: the server's `TZ` for everyone, like SmokePing. |
 | Public dashboard | on | | Allow viewing graphs without logging in. The read-only API the dashboard uses follows this setting: off requires a login for both. The admin panel always requires a login. |

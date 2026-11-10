@@ -356,8 +356,12 @@ const PS = (() => {
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   };
-  const icon = (name, title) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"` +
-    (title ? ` role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>` : ' aria-hidden="true">') + `${ICONS[name]}</svg>`;
+  // Hidden by CSS when Settings → Show icons is off (<html data-icons="off">); `alt` is a short text shown instead,
+  // for icons that mean something on their own (a lock next to a group name).
+  const icon = (name, title, alt) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"` +
+    (title ? ` role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>` : ' aria-hidden="true">') + `${ICONS[name]}</svg>` +
+    (alt ? `<span class="ico-alt">${esc(alt)}</span>` : '');
+  const setIcons = v => { document.documentElement.dataset.icons = v === 'off' || v === false ? 'off' : 'on'; };
 
   // Tiny copy button next to an address. navigator.clipboard only works over HTTPS (or localhost), so plain
   // http://<ip> falls back to a hidden textarea + execCommand('copy').
@@ -400,5 +404,5 @@ const PS = (() => {
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
-          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone, icon};
+          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone, icon, setIcons};
 })();
