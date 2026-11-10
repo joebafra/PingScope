@@ -1,8 +1,15 @@
 # Changelog
 
-All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
+All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
-## 0.017 — 2026-11-10
+## 0.018 — 2026-11-10
+
+### Changed
+
+- The commit next to the version in the footer now links to this changelog, and *Admin → Settings → Status* links to it too.
+- Every version in this changelog shows its commit after the date, the same commit the footer shows. Builds (Docker image, `deploy.sh`, `install.sh`) use the last commit that changes more than `CHANGELOG.md`, so adding a version's hash here doesn't change the hash the running version shows.
+
+## 0.017 — 2026-11-10 · [a9c3fac](https://github.com/joebafra/PingScope/commit/a9c3fac)
 
 ### Changed
 
@@ -12,13 +19,13 @@ All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.0
 
 - `/robots.txt` that keeps crawlers away from `/api/` and `/admin`.
 
-## 0.016 — 2026-11-10
+## 0.016 — 2026-11-10 · [54f6812](https://github.com/joebafra/PingScope/commit/54f6812)
 
 ### Added
 
 - **Show icons** setting (*Admin → Settings → Site*, on by default). Off removes the small line icons from the dashboard and the admin panel and shows text only: a hidden group reads "Core network (hidden)", a target without alerts "(no alerts)". Icon-only buttons (copy, light/dark) stay.
 
-## 0.015 — 2026-11-10
+## 0.015 — 2026-11-10 · [896a9e6](https://github.com/joebafra/PingScope/commit/896a9e6)
 
 ### Changed
 
@@ -34,7 +41,7 @@ All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.0
 
 - README: how the collector runs in parallel (asyncio, fping and mtr as separate processes), and which SmokePing settings (`forks`, `concurrentprobes`) aren't needed.
 
-## 0.014 — 2026-11-10
+## 0.014 — 2026-11-10 · [4003309](https://github.com/joebafra/PingScope/commit/4003309)
 
 ### Fixed
 
@@ -45,7 +52,7 @@ All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.0
 
 - README: the read-only API is what the public dashboard shows; turn *Public dashboard* off to require a login.
 
-## 0.013 — 2026-11-09
+## 0.013 — 2026-11-09 · [9747efc](https://github.com/joebafra/PingScope/commit/9747efc)
 
 ### Added
 
@@ -56,13 +63,13 @@ All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.0
 
 - Admin target list: status reads "IPv4 · 6.30 ms" instead of "v4 6.30 ms".
 
-## 0.012 — 2026-11-09
+## 0.012 — 2026-11-09 · [b633d81](https://github.com/joebafra/PingScope/commit/b633d81)
 
 ### Added
 
 - **Reverse DNS in traceroutes**: the hostname (PTR record) of every hop is shown after its address, for IPv4 and IPv6. mtr still runs without DNS (`-n`), names are looked up afterwards with a short timeout and a cache. Visitors only see a name where they also see the address. Can be turned off under *Settings → Traceroutes → Show reverse DNS names*.
 
-## 0.011 — 2026-11-08
+## 0.011 — 2026-11-08 · [059e1de](https://github.com/joebafra/PingScope/commit/059e1de)
 
 ### Added
 
@@ -92,7 +99,7 @@ All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.0
 - The "Send test alert" button text ran outside its box.
 - The Docker image no longer contains build provenance with the e-mail address of the person who pushed.
 
-## 0.010 — 2026-11-06
+## 0.010 — 2026-11-06 · [c27f4ca](https://github.com/joebafra/PingScope/commit/c27f4ca)
 
 First public release (published as `v1.0.0-beta`).
 

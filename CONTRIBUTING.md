@@ -51,8 +51,9 @@ Or run the full stack with Docker: `docker compose up -d --build`.
 Versions are numbered 0.010, 0.011, 0.012 and so on. For a new version:
 
 1. Set `__version__` in `pingscope/__init__.py`.
-2. Add a section at the top of [CHANGELOG.md](CHANGELOG.md): *Added*, *Changed*, *Fixed*.
-3. After merging to `main`, publish a GitHub release with tag `v0.012`. The Docker image then also gets the tag `0.012`.
+2. Add a section at the top of [CHANGELOG.md](CHANGELOG.md), headed `## 0.012 — <date>`, with *Added*, *Changed*, *Fixed*. Commit.
+3. In a second commit that changes **only** `CHANGELOG.md`, add the short hash of that commit after the date: `## 0.012 — <date> · [abc1234](https://github.com/joebafra/PingScope/commit/abc1234)`. A commit can't contain its own hash, hence the second commit. The version shown in the footer uses the last commit that changes more than `CHANGELOG.md` (see `deploy.sh`, `install.sh` and the Docker workflow), so it still shows `abc1234` and matches the changelog.
+4. After merging to `main`, publish a GitHub release with tag `v0.012`. The Docker image then also gets the tag `0.012`.
 
 ## Before you open a pull request
 

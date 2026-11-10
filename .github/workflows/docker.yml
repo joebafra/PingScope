@@ -32,6 +32,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history, to find the commit shown next to the version
+
+      - name: Commit shown next to the version
+        id: commit
+        # the last commit that changes more than CHANGELOG.md: the commit that adds a version's hash to the
+        # changelog must not change the hash the running version shows (see CONTRIBUTING.md)
+        run: echo "sha=$(git log -1 --format=%H -- . ':(exclude)CHANGELOG.md')" >> "$GITHUB_OUTPUT"
 
       - name: Publish to Docker Hub?
         id: publish
@@ -80,7 +88,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: PINGSCOPE_COMMIT=${{ github.sha }}
+          build-args: PINGSCOPE_COMMIT=${{ steps.commit.outputs.sha }}
           # No provenance attestation: for public repositories it defaults to mode=max, which embeds the whole
           # GitHub push event in the published image, including the pusher's e-mail address.
           provenance: false

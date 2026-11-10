@@ -85,7 +85,7 @@ command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active" && {
 mkdir -p data
 echo
 bold "Building and starting PingScope…"
-PINGSCOPE_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || true)" docker compose up -d --build
+PINGSCOPE_COMMIT="$(git log -1 --format=%h -- . ':(exclude)CHANGELOG.md' 2>/dev/null || true)" docker compose up -d --build
 [ -z "$domain" ] && docker rm -f pingscope-caddy >/dev/null 2>&1 || true
 
 # 5. Automatic updates from GitHub

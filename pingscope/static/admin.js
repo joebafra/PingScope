@@ -688,7 +688,7 @@ function viewSettings(){
   const sections = [...new Set(sch.map(x => x.section))];
   main.innerHTML = `<div style="max-width:760px">
     <div class="card pad" style="margin-bottom:16px"><h2>Status</h2><p class="muted small" style="margin:6px 0 0">
-      Version: ${esc(A.version || '–')} · Server time zone: ${esc(A.serverTz || '–')} ·
+      Version: <a href="https://github.com/joebafra/PingScope/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" title="Changelog: what changed in each version">${esc(A.version || '–')}</a> · Server time zone: ${esc(A.serverTz || '–')} ·
       Last round: ${st.last_run ? `${fmtShort(st.last_run)} (${ago(st.last_run)}, took ${st.duration}s)` : 'not yet'} ·
       fping: ${st.fping_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
       mtr: ${st.mtr_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'}</p></div>

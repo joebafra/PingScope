@@ -118,7 +118,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Two styles:** *Modern* (default, with light and dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
 - **Your own branding:** site title and welcome text.
 - **Time zone:** times follow each visitor's browser, or the server's time zone for everyone (*Settings → Time zone*). Handy when browsers report UTC because of privacy settings.
-- The **version** and commit of the running build in the footer, for example *PingScope 0.011 · 7a91fea*. What changed per version is in [CHANGELOG.md](CHANGELOG.md).
+- The **version** and commit of the running build in the footer, for example *PingScope 0.011 · 7a91fea*. The commit links to [CHANGELOG.md](CHANGELOG.md), which lists what changed per version and the commit of each version.
 - Works on phones: the menu becomes a drawer and tables collapse.
 
 ### Traceroutes (mtr)

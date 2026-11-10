@@ -97,7 +97,8 @@ ls -1t data/backups/pre-deploy-*.db 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1))
 
 start() {
   if [ "$MODE" = docker ]; then
-    PINGSCOPE_COMMIT="$(git rev-parse --short HEAD)" docker compose up -d --build --remove-orphans 9>&-
+    # the commit shown next to the version: the last one that changes more than CHANGELOG.md (see CONTRIBUTING.md)
+    PINGSCOPE_COMMIT="$(git log -1 --format=%h -- . ':(exclude)CHANGELOG.md')" docker compose up -d --build --remove-orphans 9>&-
   else
     "$DIR/venv/bin/pip" install -q -r requirements.txt 9>&-
     systemctl restart pingscope 9>&-

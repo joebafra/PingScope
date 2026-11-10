@@ -533,7 +533,7 @@ async function refresh(first){
       $('#range').innerHTML = periods().map(r => `<button data-v="${r}">${SHORT[r]}</button>`).join('');
       bindRange();
     }
-    $('#ver').innerHTML = esc(d.version || '') + (d.commit ? ` · <a href="https://github.com/joebafra/PingScope/commit/${esc(d.commit)}" target="_blank" rel="noopener noreferrer" title="Commit of the running version">${esc(d.commit)}</a>` : '');
+    $('#ver').innerHTML = esc(d.version || '') + (d.commit ? ` · <a href="https://github.com/joebafra/PingScope/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" title="Changelog: what changed in each version">${esc(d.commit)}</a>` : '');
     $('#status').textContent = d.last_run ? 'updated ' + ago(d.last_run) : 'waiting for first round…';
     $('#adminLink').textContent = d.can_edit ? 'Admin' : d.logged_in ? 'Account' : 'Log in';
     const sig = d.targets.map(t => t.id + ':' + t.series.map(s => s.key + (s.address || '')).join(',')).join('|') + '#' + d.groups.map(g => g.id + g.name + g.parent_id).join(',');
