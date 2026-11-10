@@ -260,6 +260,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Periods | 3h, day, week, month, year | | Which of 1h, 3h, 6h, 12h, day, week, month and year are offered in the header and shown on a target page. |
 | Time zone of the times shown | Visitor | | *Visitor*: each browser's own time zone. *Server*: the server's `TZ` for everyone, like SmokePing. |
 | Public dashboard | on | | Allow viewing graphs without logging in. The read-only API the dashboard uses follows this setting: off requires a login for both. The admin panel always requires a login. |
+| Open API for scripts | off | | Off: the read-only API only answers the dashboard in the browser and logged-in users; scripts, robots and scanners get 404. On: anyone who may view the dashboard can fetch its data as JSON. |
 | Show traceroute hops to visitors | off | | Show the router addresses along the path in mtr reports. Target hostnames and addresses are only shown in groups set to show them. |
 
 **Measurements**
@@ -392,7 +393,13 @@ deploy.sh          update with backup, health check and rollback
 
 ## API
 
-These endpoints are read-only and return JSON. They are public when the dashboard is public (otherwise they need a login), and visitors get the public view: no hidden groups, notification settings or DNS query names, and hostnames and IP addresses only for targets whose group shows them.
+These endpoints are read-only and return JSON. Visitors get the public view: no hidden groups, notification settings or DNS query names, and hostnames and IP addresses only for targets whose group shows them.
+
+Who may use them:
+
+- **By default only the dashboard itself and logged-in users.** Other requests (scripts, robots, scanners) get `404 Not Found`, as if there were no API. The dashboard's JavaScript is recognised by its `X-PingScope: 1` header on a same-origin request, which another website can't send.
+- **For your own scripts**, turn on *Admin → Settings → Open API for scripts*, or log in with a Viewer account and send the session cookie.
+- With *Public dashboard* off, they always need a login.
 
 | Endpoint | Returns |
 |---|---|
@@ -401,7 +408,7 @@ These endpoints are read-only and return JSON. They are public when the dashboar
 | `GET /api/mtr?key=<id>-<4\|6>` | Traceroute history. Options: `before`, `since`, `at` (closest to a time), `limit`, `only_issues=true`. |
 | `GET /api/history?days=1..90` | Alert history: active and resolved alerts with start, end, kind and loss. |
 
-Example:
+Example (with *Open API for scripts* on):
 
 ```bash
 curl -s "https://ping.example.nl/api/series?key=12-6&range=1d" | jq '.points[-1]'
@@ -444,7 +451,7 @@ The new type appears in the admin panel automatically. [`tcp.py`](pingscope/prob
 
 ## Security and privacy
 
-- **The read-only API is the public dashboard.** When *Public dashboard* is on (the default), `/api/tree`, `/api/series`, `/api/mtr` and `/api/history` answer without a login, because the dashboard in the browser uses them. They return exactly what the dashboard shows a visitor: target and group names and measurements, never hostnames, IP addresses, DNS query names, notification settings or hidden groups (an allow-list of fields, not a block-list). Turn *Admin → Settings → Public dashboard* off to require a login for the dashboard and the API.
+- **The read-only API only serves the dashboard.** The dashboard in the browser loads its data from `/api/tree`, `/api/series`, `/api/mtr` and `/api/history`. By default these only answer the dashboard's own requests and logged-in users; robots, scanners and scripts get `404 Not Found`, and `/robots.txt` keeps well-behaved crawlers away from `/api/` and `/admin`. They return exactly what the dashboard shows a visitor: target and group names and measurements, never hostnames, IP addresses, DNS query names, notification settings or hidden groups (an allow-list of fields, not a block-list). Someone who copies the dashboard's request can still read that same data, so this hides the API rather than locking it; turn *Admin → Settings → Public dashboard* off to require a login for the dashboard and the API.
 - **By default visitors never see hostnames or IP addresses** of targets, and they never see DNS query names. You can show the host and IPv4/IPv6 addresses per group (*Edit group → Show IP addresses to visitors*, off by default), and single targets can opt out. Intermediate traceroute hops are hidden unless you enable them; the destination is shown as "destination" unless the target's addresses are shown. Target **names** are always visible, so rename a target if its name contains an address that should stay private.
 - **Hidden groups** don't exist for visitors: not in the menu, counts or history, and their data returns 404.
 - The admin panel always needs a login. Passwords are hashed with **scrypt**; sessions are random tokens in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` over HTTPS). Failed logins are rate-limited per IP address. Admin requests need a custom header against CSRF. Responses carry `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers.

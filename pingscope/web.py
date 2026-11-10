@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __commit__, __version__, alerts as alerts_mod, importer, rdns, settings as settings_mod
@@ -95,10 +95,21 @@ def require_admin(request: Request):
     return u
 
 
+def _from_dashboard(request: Request):
+    """A request made by the dashboard's own JavaScript: it sends X-PingScope, which another website can't do without
+    CORS (PingScope allows none), and browsers mark it same-origin. curl, robots and scanners send neither."""
+    return (request.headers.get("x-pingscope") == "1"
+            and request.headers.get("sec-fetch-site", "same-origin") == "same-origin")
+
+
 def can_view(request: Request):
-    if store.settings()["public_dashboard"]:
+    s = store.settings()
+    if not s["public_dashboard"]:
+        return require_user(request)
+    if s["open_api"] or _from_dashboard(request) or current_user(request):
         return None
-    return require_user(request)
+    # Settings → Open API for scripts is off: look like there is no API at all
+    raise HTTPException(404, "Not Found")
 
 
 def _is_https(request):
@@ -184,6 +195,11 @@ def _icons(s):
 def index():
     s = store.settings()
     return _page("index.html", theme=s["theme"], icons=_icons(s))
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots():
+    return "User-agent: *\nDisallow: /api/\nDisallow: /admin\n"
 
 
 @app.get("/admin")

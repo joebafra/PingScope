@@ -11,7 +11,7 @@ const PS = (() => {
   async function api(path, opts = {}){
     const o = {cache: 'no-store', credentials: 'same-origin', ...opts, headers: {...(opts.headers || {})}};
     if (o.body !== undefined && typeof o.body !== 'string'){ o.body = JSON.stringify(o.body); o.headers['content-type'] = 'application/json'; }
-    if (o.method && o.method !== 'GET') o.headers['x-pingscope'] = '1';
+    o.headers['x-pingscope'] = '1';  // CSRF protection for changes; for reads it marks the request as the dashboard's own
     const r = await fetch(path, o);
     let data = null;
     try { data = await r.json(); } catch(e){}

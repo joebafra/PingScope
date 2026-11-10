@@ -61,7 +61,7 @@ There is no automated test suite yet, so please check by hand:
 1. `python -m py_compile pingscope/*.py pingscope/probes/*.py` passes.
 2. The server starts and a measurement round runs (`Round HH:MM: N series` in the log).
 3. The dashboard works both logged out and logged in, in the *Modern* and *Classic* style, and on a narrow (phone) screen.
-4. If you changed an endpoint: the visitor view still contains no addresses (`curl -s http://127.0.0.1:8080/api/tree` while logged out).
+4. If you changed an endpoint: the visitor view still contains no addresses (`curl -s -H 'X-PingScope: 1' http://127.0.0.1:8080/api/tree` while logged out).
 5. If you changed `install.sh` or `deploy.sh`: `bash -n install.sh && bash -n deploy.sh`.
 
 Mention in the pull request what you tested. By contributing you agree that your contribution is licensed under the [MIT License](LICENSE).

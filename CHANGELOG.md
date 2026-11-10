@@ -2,6 +2,16 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch.
 
+## 0.017 — 2026-11-10
+
+### Changed
+
+- **The read-only API only answers the dashboard.** `/api/tree`, `/api/series`, `/api/mtr` and `/api/history` now answer only the dashboard in the browser (recognised by its `X-PingScope` header on a same-origin request) and logged-in users. Robots, scanners and scripts get `404 Not Found`, as if there were no API. **Using the API from your own scripts?** Turn on *Admin → Settings → Open API for scripts* (new, off by default), or log in with a Viewer account. `/api/session` stays open, because the install and update scripts use it as a health check.
+
+### Added
+
+- `/robots.txt` that keeps crawlers away from `/api/` and `/admin`.
+
 ## 0.016 — 2026-11-10
 
 ### Added

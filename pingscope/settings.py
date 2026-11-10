@@ -22,6 +22,11 @@ SCHEMA = {
                          "Allow viewing graphs without logging in. The read-only API the dashboard uses (/api/tree, "
                          "/api/series, /api/mtr, /api/history) follows this setting: turn it off to require a login for "
                          "both. The admin panel always requires a login.", None, None),
+    "open_api": (False, bool, "Site", "Open API for scripts",
+                 "Off: the read-only API only answers the dashboard in the browser and logged-in users; scripts, "
+                 "robots and scanners get 404 Not Found. On: anyone who may view the dashboard can also fetch its "
+                 "data as JSON, for example for your own scripts. Either way the API never shows more than the "
+                 "dashboard.", None, None),
     "public_show_hops": (False, bool, "Site", "Show traceroute hops to visitors",
                          "Show the router addresses along the path in mtr reports. Hostnames and IP addresses of "
                          "targets are only shown to visitors in groups set to show them (Edit group); logged-in "
