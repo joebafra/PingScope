@@ -23,13 +23,16 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("serve", help="start the web server and measurements (default)")
     sub.add_parser("create-admin", help="create an admin account")
-    imp = sub.add_parser("import", help="import a SmokePing Targets file or PingScope JSON export")
+    imp = sub.add_parser("import", help="import a SmokePing Targets file or PingScope export (.json, or "
+                                        ".jsonl.gz with measurement history)")
     imp.add_argument("file")
     imp.add_argument("--replace", action="store_true", help="delete all existing groups and targets first")
     imp.add_argument("--no-known-ipv6", action="store_true", help="don't add IPv6 for root servers/public DNS")
     imp.add_argument("--site-title", action="store_true", help="use the title/remark from the file")
     exp = sub.add_parser("export", help="export groups, targets and settings as JSON")
     exp.add_argument("file", nargs="?")
+    exp.add_argument("--history", action="store_true",
+                     help="include the measurement history (gzip-compressed JSON Lines; needs a file name)")
     bak = sub.add_parser("backup", help="write a consistent copy of the database")
     bak.add_argument("file")
     pt = sub.add_parser("ping-test", help="run fping like a measurement round and show which pings are lost")
@@ -49,7 +52,8 @@ def main():
         return
 
     from .db import Store
-    store = Store(os.environ.get("PINGSCOPE_DB", "data/pingscope.db"))
+    db_path = os.environ.get("PINGSCOPE_DB", "data/pingscope.db")
+    store = Store(db_path)
 
     if args.cmd == "create-admin":
         username = input("Username: ").strip()
@@ -63,19 +67,29 @@ def main():
         print(f"Admin '{username}' created.")
 
     elif args.cmd == "import":
-        from . import importer
+        from . import history, importer
         from .probes import PROBES
-        with open(args.file, encoding="utf-8") as f:
-            text = f.read()
+        with open(args.file, "rb") as f:
+            gz = f.read(2) == b"\x1f\x8b"  # an export with measurement history
+        if gz:
+            text = history.read_header(args.file)
+        else:
+            with open(args.file, encoding="utf-8") as f:
+                text = f.read()
         tree, warnings, kind = importer.parse_any(text)
         stats = importer.prepare(tree, list(PROBES), not args.no_known_ipv6, warnings)
-        added = importer.apply(store, tree, "replace" if args.replace else "merge")
+        refs = {}
+        added = importer.apply(store, tree, "replace" if args.replace else "merge", refs)
         if args.site_title and tree.get("site", {}).get("title"):
             store.save_settings({"site_title": tree["site"]["title"], "site_remark": tree["site"].get("remark", "")})
         for w in warnings:
             print("warning:", w)
         print(f"Imported {added['groups']} groups and {added['targets']} targets "
               f"({added['skipped']} skipped as duplicates); {stats['known_ipv6']} known IPv6 addresses added.")
+        if gz:
+            h = history.restore(store, args.file, refs)
+            print(f"Measurement history: {h['samples']} rounds, {h['hourly']} hourly summaries, {h['mtr']} traceroutes "
+                  f"and {h['alerts']} alerts imported" + (f"; {h['bad']} unreadable lines skipped" if h["bad"] else "") + ".")
 
     elif args.cmd == "backup":
         import sqlite3
@@ -88,6 +102,15 @@ def main():
     elif args.cmd == "ping-test":
         import asyncio
         asyncio.run(ping_test(store, args))
+
+    elif args.cmd == "export" and args.history:
+        from . import history, importer
+        if not args.file:
+            sys.exit("--history needs a file name, for example pingscope-history.jsonl.gz")
+        with open(args.file, "wb") as f:
+            for chunk in history.export_stream(os.path.abspath(db_path), importer.export(store, refs=True)):
+                f.write(chunk)
+        print(f"Exported with measurement history to {args.file}")
 
     elif args.cmd == "export":
         from . import importer

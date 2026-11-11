@@ -633,7 +633,7 @@ function viewImport(){
   main.innerHTML = `<div class="card pad" style="max-width:1000px;margin-bottom:16px">
     <h2>Import</h2>
     <p class="muted" style="margin:4px 0 14px">Paste the <b>Targets</b> section of a SmokePing config (a complete config file also works), or a PingScope JSON export. Nested groups, FPing, FPing6, DNS and TCPPing probes are converted. Using your own probes, such as FPingFast? Paste the <b>Probes</b> section as well, so their settings come along.</p>
-    <div class="row" style="margin-bottom:8px"><input type="file" id="ifile" accept=".txt,.conf,.json,text/*" style="width:auto"><span class="muted small">or paste below</span></div>
+    <div class="row" style="margin-bottom:8px"><input type="file" id="ifile" accept=".txt,.conf,.json,.gz,text/*,application/gzip" style="width:auto"><span class="muted small">or paste below</span></div>
     <textarea id="itext" rows="12" placeholder="*** Targets ***&#10;probe = FPing&#10;&#10;+ dns&#10;menu = DNS&#10;title = DNS servers&#10;&#10;++ cloudflare&#10;host = 1.1.1.1"></textarea>
     <div style="margin:12px 0">
       <label class="check"><input type="radio" name="imode" value="merge" checked> <span><b>Add to existing</b> — groups with the same name are reused; identical targets are skipped.</span></label>
@@ -645,22 +645,56 @@ function viewImport(){
     <div class="row"><button class="btn" id="ipreview">Preview</button><button class="btn primary" id="iapply" disabled>Import</button><span class="muted small" id="imsg"></span></div>
     <div id="ipreviewbox" style="margin-top:16px"></div></div>
     <div class="card pad" style="max-width:1000px"><h2>Export</h2>
-    <p class="muted" style="margin:4px 0 12px">Download all groups, targets and settings as JSON. Use it as a backup or to move to another server (import it above). Measurement history is not included; copy the database file for that.</p>
-    <a class="btn" href="api/admin/export" download>Download JSON export</a></div>`;
+    <p class="muted" style="margin:4px 0 12px">Download all groups, targets and settings. Use it as a backup or to move to another server (import it above).</p>
+    <label class="check" style="margin-bottom:12px"><input type="checkbox" id="ehist"> <span><b>Include measurement history</b> — the measurements behind the graphs, traceroutes and alert history, as a compressed file (<code>.jsonl.gz</code>) that you import above, on this or another PingScope server. <span class="muted small" id="ehinfo"></span></span></label>
+    <a class="btn" id="ebtn" href="api/admin/export" download>Download JSON export</a></div>`;
   const text = $('#itext');
-  $('#ifile').onchange = async e => { const f = e.target.files[0]; if (f){ text.value = await f.text(); invalidate(); } };
+  A.histFile = null;
+  $('#ehist').onchange = e => {
+    $('#ebtn').href = e.target.checked ? 'api/admin/export?history=1' : 'api/admin/export';
+    $('#ebtn').textContent = e.target.checked ? 'Download export with history' : 'Download JSON export';
+  };
+  api('api/admin/export/info').then(i => {
+    const mb = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1e6)) + ' MB';
+    $('#ehinfo').textContent = i.samples || i.hourly
+      ? `Now: history${i.from ? ` since ${fmtDay(i.from)}` : ''}, ${i.samples.toLocaleString(PS.LOCALE)} measurement rounds and ${i.mtr.toLocaleString(PS.LOCALE)} traceroutes; database ${mb(i.db_bytes)}. Large histories take a while to download and import.`
+      : 'There is no measurement history yet.';
+  }).catch(() => {});
+  $('#ifile').onchange = async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    A.histFile = null;
+    const head = new Uint8Array(await f.slice(0, 2).arrayBuffer());
+    if (head[0] === 0x1f && head[1] === 0x8b){  // gzip: an export with measurement history
+      try {
+        const line = await gzipFirstLine(f);
+        text.value = JSON.stringify(JSON.parse(line), null, 2);
+        A.histFile = f;
+      } catch(err){ text.value = ''; toast('This compressed file is not a PingScope export with history.', true); }
+    } else text.value = await f.text();
+    invalidate();
+  };
   const invalidate = () => { $('#iapply').disabled = true; $('#isetwrap').classList.toggle('hidden', !text.value.trim().startsWith('{')); };
-  text.oninput = invalidate; $('#iknown').onchange = () => { if (A.previewText) preview(); };
+  text.oninput = () => { A.histFile = null; invalidate(); };  // edited: import the text only
+  $('#iknown').onchange = () => { if (A.previewText) preview(); };
   $('#ipreview').onclick = preview;
   $('#iapply').onclick = async () => {
     const mode = $('input[name=imode]:checked').value;
     if (mode === 'replace' && !confirm('Replace everything? All current groups, targets and measurement history will be deleted.')) return;
+    const opts = {mode, add_known_ipv6: $('#iknown').checked, use_site_title: $('#ititle').checked, restore_settings: $('#isettings').checked};
+    const withHist = A.histFile && $('#ihist') && $('#ihist').checked;
+    $('#iapply').disabled = $('#ipreview').disabled = true;
+    if (withHist){ $('#imsg').style.color = ''; $('#imsg').textContent = 'Uploading and importing the measurement history… this can take a few minutes for a large file.'; }
     try {
-      const r = await api('api/admin/import', {method: 'POST', body: {text: text.value, mode, add_known_ipv6: $('#iknown').checked,
-        use_site_title: $('#ititle').checked, restore_settings: $('#isettings').checked}});
-      toast(`Imported ${r.added.targets} targets in ${r.added.groups} new groups${r.added.skipped ? ` (${r.added.skipped} skipped as duplicates)` : ''}`);
+      const r = withHist
+        ? await api('api/admin/import/history?' + new URLSearchParams(opts), {method: 'POST', body: A.histFile, headers: {'content-type': 'application/gzip'}})
+        : await api('api/admin/import', {method: 'POST', body: {text: text.value, ...opts}});
+      const h = r.history;
+      toast(`Imported ${r.added.targets} targets in ${r.added.groups} new groups${r.added.skipped ? ` (${r.added.skipped} skipped as duplicates)` : ''}` +
+        (h ? `, ${h.samples.toLocaleString(PS.LOCALE)} measurement rounds, ${h.hourly.toLocaleString(PS.LOCALE)} hourly summaries, ${h.mtr.toLocaleString(PS.LOCALE)} traceroutes and ${h.alerts.toLocaleString(PS.LOCALE)} alerts` : ''));
       await load(); A.gid = 'all'; location.hash = 'targets';
-    } catch(e){ toast(e.message, true); }
+    } catch(e){ $('#imsg').textContent = ''; toast(e.message, true); }
+    finally { $('#iapply').disabled = $('#ipreview').disabled = false; }
   };
   async function preview(){
     $('#imsg').textContent = '';
@@ -675,11 +709,38 @@ function viewImport(){
         <span class="stat"><b>${st.known_ipv6 + st.hostnames}</b><span class="muted small">with IPv6 (${st.known_ipv6} known addresses, ${st.hostnames} hostnames via AAAA)</span></span>
         <span class="stat"><b>${st.ipv4_only}</b><span class="muted small">IPv4 only — see the IPv6 tab afterwards</span></span></div>
         ${r.site && r.site.title ? `<p class="small muted">Title in file: <b>${esc(r.site.title)}</b>${r.site.remark ? ' — ' + esc(r.site.remark) : ''}</p>` : ''}
+        ${histNote(r.history)}
         <div class="outline">${tree(r.outline)}</div>
         ${r.warning_count ? `<p class="small" style="margin:10px 0 0"><b>${r.warning_count} note(s):</b></p><ul class="warnlist">${r.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
       $('#iapply').disabled = false;
     } catch(e){ $('#ipreviewbox').innerHTML = ''; $('#imsg').textContent = e.message; $('#imsg').style.color = 'var(--bad)'; }
   }
+}
+
+// The first line of a gzip-compressed export with history: its groups, targets and settings (JSON).
+async function gzipFirstLine(file){
+  const rd = file.stream().pipeThrough(new DecompressionStream('gzip')).pipeThrough(new TextDecoderStream()).getReader();
+  let s = '';
+  try {
+    for (;;){
+      const {value, done} = await rd.read();
+      if (done) break;
+      s += value;
+      const i = s.indexOf('\n');
+      if (i >= 0){ s = s.slice(0, i); break; }
+      if (s.length > 64e6) throw new Error('first line too long');
+    }
+  } finally { rd.cancel().catch(() => {}); }
+  return s;
+}
+const fmtDay = t => PS.fmtTime(t, {day: 'numeric', month: 'short', year: 'numeric'});
+function histNote(h){
+  if (!h) return '';
+  const n = x => (x || 0).toLocaleString(PS.LOCALE);
+  const what = `history${h.from ? ` from ${fmtDay(h.from)}` : ''}${h.to ? ` to ${fmtDay(h.to)}` : ''}: ${n(h.samples)} measurement rounds, ${n(h.hourly)} hourly summaries, ${n(h.mtr)} traceroutes and ${n(h.alerts)} alerts`;
+  return A.histFile
+    ? `<label class="check" style="margin:0 0 10px"><input type="checkbox" id="ihist" checked> <span><b>Also import the measurement history</b><br><span class="muted small">The ${what}. Measurements that already exist here are kept.</span></span></label>`
+    : `<p class="small muted" style="margin:0 0 10px" id="ihistnote">This is the configuration of an export with measurement history (${what}). To import the history too, choose the <code>.jsonl.gz</code> file above and don't edit the text.</p>`;
 }
 
 // ---------- settings ----------

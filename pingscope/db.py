@@ -178,6 +178,10 @@ class Store:
         r = self._one("SELECT v FROM meta WHERE k=?", (k,))
         return r[0] if r else default
 
+    def set_meta_if_missing(self, k, v):
+        with self.lock, self.c:
+            self.c.execute("INSERT OR IGNORE INTO meta VALUES (?,?)", (k, v))
+
     def set_meta(self, k, v):
         with self.lock, self.c:
             self.c.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (k, v))
@@ -642,6 +646,58 @@ class Store:
                 self.c.execute("INSERT OR REPLACE INTO meta VALUES ('rolled_until', ?)", (str(h + 3600),))
         with self.lock, self.c:
             self.c.execute("DELETE FROM samples WHERE ts<?", (now - raw_retention_s,))
+
+    def import_measurements(self, table, rows):
+        """Imported rounds (samples) or hourly summaries: [(series, ts, sent, lost, blob)]. Existing rows are kept."""
+        assert table in ("samples", "hourly")
+        with self.lock, self.c:
+            before = self.c.total_changes
+            self.c.executemany(f"INSERT OR IGNORE INTO {table} VALUES (?,?,?,?,?)", rows)
+            return self.c.total_changes - before
+
+    def import_mtr(self, rows):
+        """Imported traceroutes: [(path, ts, reason, loss, hops, hubs_json, error, trigger_loss)], skipping known ones."""
+        with self.lock, self.c:
+            before = self.c.total_changes
+            self.c.executemany("INSERT INTO mtr(path, ts, reason, loss, hops, hubs, error, trigger_loss) "
+                               "SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM mtr WHERE path=? AND ts=?)",
+                               [(*r, r[0], r[1]) for r in rows])
+            return self.c.total_changes - before
+
+    def import_alerts(self, rows):
+        """Imported finished alerts: [(series, target_id, family, kind, started, ended, peak_loss, last_loss, emailed,
+        last_email)], skipping known ones."""
+        with self.lock, self.c:
+            before = self.c.total_changes
+            self.c.executemany("INSERT INTO alerts(series, target_id, family, kind, started, ended, peak_loss, "
+                               "last_loss, emailed, last_email) SELECT ?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS "
+                               "(SELECT 1 FROM alerts WHERE series=? AND started=?)",
+                               [(*r, r[0], r[4]) for r in rows])
+            return self.c.total_changes - before
+
+    def rollup_missing(self, keys):
+        """Hourly summaries for imported rounds in hours that were already rolled up (the normal rollup only
+        handles new hours). Returns the number of hours added."""
+        rolled = self.meta("rolled_until")
+        if rolled is None:
+            return 0  # nothing rolled up yet: the next rollup starts at the oldest round
+        n = 0
+        for k in keys:
+            hours = [r[0] for r in self._q("SELECT ts - ts % 3600 FROM samples WHERE series=? AND ts<? "
+                                            "EXCEPT SELECT ts FROM hourly WHERE series=?", (k, int(rolled), k))]
+            for h in hours:
+                sent = lost = 0
+                vals = []
+                for r in self._q("SELECT sent, lost, rtts FROM samples WHERE series=? AND ts>=? AND ts<?",
+                                 (k, h, h + 3600)):
+                    sent += r["sent"]
+                    lost += r["lost"]
+                    vals.extend(unpack(r["rtts"]))
+                with self.lock, self.c:
+                    self.c.execute("INSERT OR IGNORE INTO hourly VALUES (?,?,?,?,?)",
+                                   (k, h, sent, lost, pack(quantiles(vals))))
+                n += 1
+        return n
 
     def series(self, key, start, end, step, source):
         """Points per bucket of `step` seconds, each with merged quantiles."""

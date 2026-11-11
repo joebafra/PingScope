@@ -2,6 +2,13 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.020 — 2026-11-11
+
+### Added
+
+- **Export with measurement history.** *Admin → Import & export → Export → Include measurement history* downloads the groups, targets and settings together with the measurements behind the graphs (per round for the last 14 days, hourly summaries for older data), the traceroutes and the finished alerts, as one compressed file (`.jsonl.gz`, about half the size of the database). Choose that file under *Import* on another PingScope server, or on this one, and the history comes along: targets get new ids and the history follows them. Measurements that already exist are kept, so importing the same file twice adds nothing. Users and API tokens are not part of an export.
+- Command line: `python -m pingscope export --history FILE.jsonl.gz`, and `import` reads such files too.
+
 ## 0.019 — 2026-11-10 · [a95589f](https://github.com/joebafra/PingScope/commit/a95589f)
 
 ### Changed

@@ -151,7 +151,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Per target:** probe type, host, extra IPv6 address, families, DNS query and record type, port, probe settings (probes per round, spacing, timeout, packet size, together or spread, measure every N rounds), mtr on/off, enabled, alert overrides, extra Telegram chats and a private note.
 - **Groups** can be **hidden from visitors**: the group, its subgroups and their targets only exist for logged-in users.
 - **Show IP addresses to visitors** per group (off by default): visitors then see the host and the IPv4 and IPv6 addresses of the targets in that group and its subgroups, also as the destination in traceroutes. Single targets can opt out with *Don't show this target's addresses to visitors*. Groups that show addresses get a 🌐 in the group list.
-- **Import & export:** SmokePing import with preview, JSON export and import of groups, targets and settings.
+- **Import & export:** SmokePing import with preview, JSON export and import of groups, targets and settings, optionally **with the measurement history** to move to another server without losing your graphs.
 - **Settings** apply without a restart, with warnings for combinations that don't fit (for example rounds that would overlap). A status card shows the last round and whether fping and mtr are installed, and an **HTTPS / SSL** card shows per hostname who issued the certificate, when it expires and whether HTTP redirects to HTTPS.
 - **Users** with two roles: **Admin** (full access) and **Viewer** (view-only: sees the dashboard with hostnames, IP addresses, traceroute hops and hidden groups, but can't change anything). Every user can change their own password.
 
@@ -169,6 +169,14 @@ Paste your SmokePing `Targets` section (or a whole config file, or upload it) in
 - *Add to existing* reuses groups with the same name and skips identical targets; *Replace everything* starts fresh.
 
 Afterwards, **Admin → IPv6** finds AAAA records for the targets that are still IPv4-only. An example config is in [`examples/smokeping-example.txt`](examples/smokeping-example.txt).
+
+### Export, with or without measurement history
+
+**Admin → Import & export → Export** downloads all groups, targets and settings as JSON. Tick **Include measurement history** to also get the measurements behind the graphs (per round for the last 14 days, hourly summaries for older data), the traceroutes and the finished alerts, as one compressed file (`.jsonl.gz`). Import that file in the same screen on another PingScope server, or on this one after *Replace everything*:
+
+- Targets get new ids; the history follows them. With *Add to existing*, the history of targets that already exist is added to theirs, and measurements that are already there are kept, so importing the same file twice adds nothing.
+- API tokens, users and sessions are never part of an export. To move absolutely everything (including users), copy the database instead (`python -m pingscope backup`, see [INSTALL](docs/INSTALL.md#backups)).
+- A file is roughly half the size of the database. For very large histories the command line avoids a browser upload: `python -m pingscope export --history FILE.jsonl.gz` and `python -m pingscope import FILE.jsonl.gz`.
 
 ### Deployment
 
@@ -382,6 +390,7 @@ pingscope/
   alerts.py        alert state, group preview, Telegram, Pushover and email
   db.py            SQLite storage, hourly roll-up
   importer.py      SmokePing and JSON import, JSON export
+  history.py       export and import of the measurement history (.jsonl.gz)
   settings.py      settings schema (defaults, ranges, help texts)
   model.py         target validation
   static/          dashboard and admin panel (HTML, CSS, JS)
@@ -424,8 +433,9 @@ Inside the container, prefix with `docker exec -it pingscope`.
 python -m pingscope                                 start the server (same as "serve")
 python -m pingscope create-admin                    create an admin account
 python -m pingscope import FILE [--replace] [--no-known-ipv6] [--site-title]
-                                                    import a SmokePing Targets file or a JSON export
+                                                    import a SmokePing Targets file or an export (.json, or .jsonl.gz with history)
 python -m pingscope export [FILE]                   JSON export of groups, targets and settings
+python -m pingscope export --history FILE.jsonl.gz  the same with the measurement history
 python -m pingscope backup FILE                     consistent copy of the database (safe while running)
 python -m pingscope ping-test [--family 4|6|both] [--only NAME] [--solo] [--rounds 3] [--count N]
                                                     diagnostics: run fping exactly like a round

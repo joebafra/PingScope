@@ -230,7 +230,8 @@ def parse_any(text):
             raise ValueError(f"Invalid JSON: {e}")
         if not isinstance(data, dict) or "groups" not in data:
             raise ValueError("JSON is not a PingScope export")
-        return {"site": data.get("site") or {}, "groups": data["groups"], "settings": data.get("settings")}, [], "json"
+        return ({"site": data.get("site") or {}, "groups": data["groups"], "settings": data.get("settings"),
+                 "history": data.get("history") if isinstance(data.get("history"), dict) else None}, [], "json")
     tree, warnings = parse_smokeping(text)
     if not tree["groups"]:
         raise ValueError("No targets found. Paste the Targets section of a SmokePing config.")
@@ -250,6 +251,8 @@ def prepare(tree, probes, add_known_ipv6=True, warnings=None):
         for raw in g.get("targets", []):
             try:
                 t = clean_target(raw, probes)
+                if raw.get("ref") is not None:
+                    t["ref"] = raw["ref"]  # id on the exporting server, maps measurement history (history.py)
             except ValidationError as e:
                 stats["invalid"] += 1
                 warnings.append(f"{' › '.join(path)} › {raw.get('name') or raw.get('host')}: {e}")
@@ -289,8 +292,10 @@ def outline(tree):
     return [walk(g) for g in tree["groups"]]
 
 
-def apply(store, tree, mode="merge"):
-    """Write a prepared tree into the store. mode: merge (add to existing) or replace (wipe first)."""
+def apply(store, tree, mode="merge", refs=None):
+    """Write a prepared tree into the store. mode: merge (add to existing) or replace (wipe first).
+    refs: filled with {target ref in the file: target id here}, also for duplicates that were skipped."""
+    refs = refs if refs is not None else {}
     if mode == "replace":
         store.clear_config()
     added = {"groups": 0, "targets": 0, "skipped": 0}
@@ -329,12 +334,16 @@ def apply(store, tree, mode="merge"):
             existing_groups.append({"id": gid, "parent_id": parent_id, "name": name})
             added["groups"] += 1
         for t in g.get("targets", []):
-            dup = any(x["group_id"] == gid and x["probe"] == t["probe"] and x["host"] == t["host"]
-                      and x["host_v6"] == t["host_v6"] and x["name"] == t["name"] for x in existing_targets)
+            dup = next((x for x in existing_targets if x["group_id"] == gid and x["probe"] == t["probe"]
+                        and x["host"] == t["host"] and x["host_v6"] == t["host_v6"] and x["name"] == t["name"]), None)
             if dup:
                 added["skipped"] += 1
+                if t.get("ref") is not None:
+                    refs[t["ref"]] = dup["id"]
                 continue
             tid = store.create_target(gid, t)
+            if t.get("ref") is not None:
+                refs[t["ref"]] = tid
             existing_targets.append({**t, "id": tid, "group_id": gid})
             added["targets"] += 1
         for sub in g.get("groups", []):
@@ -345,7 +354,8 @@ def apply(store, tree, mode="merge"):
     return added
 
 
-def export(store, include_settings=True):
+def export(store, include_settings=True, refs=False):
+    """Groups, targets and settings as JSON. refs: add each target's id as `ref`, for the history export."""
     groups = store.groups()
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
@@ -363,7 +373,8 @@ def export(store, include_settings=True):
                 "alert_telegram": bool(g.get("alert_telegram", True)), "alert_rounds": g.get("alert_rounds"),
                 "alert_pushover": bool(g.get("alert_pushover", True)),
                 "alert_chat_ids": g.get("alert_chat_ids", ""),
-                "targets": [{k: t[k] for k in keep} for t in targets if t["group_id"] == g["id"]],
+                "targets": [{**{k: t[k] for k in keep}, **({"ref": t["id"]} if refs else {})}
+                            for t in targets if t["group_id"] == g["id"]],
                 "groups": walk(g["id"]),
             })
         return out

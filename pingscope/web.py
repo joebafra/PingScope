@@ -7,14 +7,16 @@ import math
 import os
 import re
 import secrets
+import sqlite3
+import tempfile
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __commit__, __version__, alerts as alerts_mod, importer, rdns, settings as settings_mod
+from . import __commit__, __version__, alerts as alerts_mod, history as history_mod, importer, rdns, settings as settings_mod
 from .collector import Collector, measure
 from .db import Store, measure_every
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
@@ -701,7 +703,23 @@ def import_preview(body: dict = Body(...)):
         raise _bad(e)
     stats = importer.prepare(tree, list(PROBES), bool(body.get("add_known_ipv6", True)), warnings)
     return {"kind": kind, "site": tree.get("site"), "stats": stats, "outline": importer.outline(tree),
-            "warnings": warnings[:200], "warning_count": len(warnings)}
+            "warnings": warnings[:200], "warning_count": len(warnings), "history": tree.get("history")}
+
+
+def _import_tree(tree, warnings, kind, opts, refs=None):
+    importer.prepare(tree, list(PROBES), bool(opts.get("add_known_ipv6", True)), warnings)
+    mode = "replace" if opts.get("mode") == "replace" else "merge"
+    added = importer.apply(store, tree, mode, refs)
+    site = tree.get("site") or {}
+    if opts.get("use_site_title") and site.get("title"):
+        store.save_settings({"site_title": site["title"], "site_remark": site.get("remark", "")})
+    if kind == "json" and opts.get("restore_settings") and tree.get("settings"):
+        try:
+            store.save_settings({k: v for k, v in tree["settings"].items()
+                                 if k in settings_mod.SCHEMA and k not in settings_mod.SECRETS})
+        except ValueError as e:
+            raise _bad(e)
+    return added
 
 
 @admin.post("/import")
@@ -710,27 +728,70 @@ def import_apply(body: dict = Body(...)):
         tree, warnings, kind = importer.parse_any(str(body.get("text") or ""))
     except ValueError as e:
         raise _bad(e)
-    importer.prepare(tree, list(PROBES), bool(body.get("add_known_ipv6", True)), warnings)
-    mode = "replace" if body.get("mode") == "replace" else "merge"
-    added = importer.apply(store, tree, mode)
-    site = tree.get("site") or {}
-    if body.get("use_site_title") and site.get("title"):
-        store.save_settings({"site_title": site["title"], "site_remark": site.get("remark", "")})
-    if kind == "json" and body.get("restore_settings") and tree.get("settings"):
-        try:
-            store.save_settings({k: v for k, v in tree["settings"].items()
-                                 if k in settings_mod.SCHEMA and k not in settings_mod.SECRETS})
-        except ValueError as e:
-            raise _bad(e)
+    added = _import_tree(tree, warnings, kind, body)
     collector.poke()
     return {"added": added}
 
 
+@admin.post("/import/history")
+async def import_history(request: Request, mode: str = "merge", add_known_ipv6: bool = True,
+                         use_site_title: bool = False, restore_settings: bool = False):
+    """Import an export with measurement history (.jsonl.gz, sent as the request body): first the groups,
+    targets and settings like /import, then the history of the imported targets."""
+    fd, path = tempfile.mkstemp(suffix=".import.gz", dir=os.path.dirname(os.path.abspath(DB_PATH)))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            async for chunk in request.stream():
+                f.write(chunk)
+        opts = {"mode": mode, "add_known_ipv6": add_known_ipv6, "use_site_title": use_site_title,
+                "restore_settings": restore_settings}
+        return await asyncio.to_thread(_import_history_file, path, opts)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+
+
+def _import_history_file(path, opts):
+    try:
+        header = history_mod.read_header(path)
+    except (OSError, EOFError, UnicodeDecodeError):
+        raise HTTPException(400, "This is not a PingScope export with measurement history (.jsonl.gz).")
+    try:
+        tree, warnings, kind = importer.parse_any(header)
+    except ValueError as e:
+        raise _bad(e)
+    if kind != "json" or not tree.get("history"):
+        raise HTTPException(400, "This file has no measurement history.")
+    refs = {}
+    added = _import_tree(tree, warnings, kind, opts, refs)
+    done = history_mod.restore(store, path, refs)
+    collector.poke()
+    return {"added": added, "history": done}
+
+
 @admin.get("/export")
-def export():
+def export(history: bool = False):
+    stamp = time.strftime("%Y%m%d-%H%M")
+    if history:
+        name = f"pingscope-export-{stamp}-history.jsonl.gz"
+        return StreamingResponse(history_mod.export_stream(os.path.abspath(DB_PATH), importer.export(store, refs=True)),
+                                 media_type="application/gzip",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}"'})
     data = importer.export(store)
-    name = f"pingscope-export-{time.strftime('%Y%m%d-%H%M')}.json"
+    name = f"pingscope-export-{stamp}.json"
     return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@admin.get("/export/info")
+def export_info():
+    """How much measurement history there is, for the export option."""
+    con = sqlite3.connect(f"file:{os.path.abspath(DB_PATH)}?mode=ro", uri=True, timeout=30)
+    try:
+        info = history_mod.summary(con)
+    finally:
+        con.close()
+    info["db_bytes"] = sum(os.path.getsize(p) for p in (DB_PATH, DB_PATH + "-wal") if os.path.exists(p))
+    return info
 
 
 def _check_https(domain):

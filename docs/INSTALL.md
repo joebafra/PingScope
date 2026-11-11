@@ -404,7 +404,7 @@ sudo docker exec pingscope python -m pingscope backup /data/backup-$(date +%F).d
 # the file appears in /opt/pingscope/data/
 ```
 
-To export only the configuration (groups, targets, settings) as JSON, use **Admin → Import & export → Download JSON export**.
+To export only the configuration (groups, targets, settings) as JSON, use **Admin → Import & export → Download JSON export**. Tick **Include measurement history** to take the graphs, traceroutes and alert history along as well (a `.jsonl.gz` file), for example to move to another server: import that file under **Import** there. Users and API tokens are not part of an export; the database backup above has everything.
 
 ### Useful commands
 
