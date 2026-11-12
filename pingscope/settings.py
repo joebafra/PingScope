@@ -36,6 +36,10 @@ SCHEMA = {
                  "Every target is measured once per interval.", 30, 3600),
     "ping_count": (20, int, "Measurements", "Pings per round", "ICMP echo requests per target per round.", 1, 100),
     "dns_count": (10, int, "Measurements", "DNS queries per round", "Queries per DNS target per round.", 1, 100),
+    "dns_tries": (1, int, "Measurements", "DNS attempts per query",
+                  "Like dig: a DNS query without an answer within the timeout is sent again, up to this many times, and "
+                  "the response time of the answered attempt counts. 1 shows every lost query. SmokePing's DNS probe uses "
+                  "dig's defaults: 3 attempts with a 5000 ms timeout.", 1, 3),
     "tcp_count": (10, int, "Measurements", "TCP connects per round", "Connection attempts per TCP target per round.", 1, 100),
     "probe_spacing_ms": (1000, int, "Measurements", "Spacing between probes (ms)",
                          "Time between two probes to the same target within a round.", 100, 10000),
@@ -89,11 +93,23 @@ SCHEMA = {
     "pushover_users": ("", str, "Notifications", "Pushover user or group keys",
                        "Where Pushover alerts go: one or more user or group keys from pushover.net, separated by commas.",
                        None, None),
+    "webhook_url": ("", "secret", "Notifications", "Webhook URL",
+                    "Alerts are also sent as an HTTP POST to this URL, for groups with webhooks on. Stored on the server "
+                    "and never shown again; leave empty to keep it. The WEBHOOK_URL environment variable, if set, takes "
+                    "priority.", None, None),
+    "webhook_format": ("json", str, "Notifications", "Webhook format",
+                       "JSON: a generic message with all fields, for your own scripts, Home Assistant, n8n or Node-RED. "
+                       "Slack: the text in a \"text\" field, also for Mattermost, Rocket.Chat and Google Chat. "
+                       "Discord: the text in a \"content\" field.", None, None),
     "alert_after_rounds": (3, int, "Notifications", "Rounds in a row before alerting (default)",
                            "A problem must last this many measurement rounds before an alert starts, and the same "
                            "number of good rounds before it counts as resolved. Prevents alerts for a single blip. "
                            "Groups and single targets can override it.",
                            1, 60),
+    "history_loss": (10, int, "Notifications", "History: record packet loss from (%)",
+                     "Problems are always kept in the alert history, also in groups with notifications off: outages, "
+                     "and packet loss from this percentage (for the usual number of rounds in a row). Groups with "
+                     "notifications on use their own threshold. 0 = record outages only.", 0, 100),
     "alert_recovery": (True, bool, "Notifications", "Notify when resolved",
                        "Also send a message (Telegram and/or email) when a target is fine again.", None, None),
     "alert_reminder_hours": (0, int, "Notifications", "Reminder while still down (hours)",
@@ -103,12 +119,14 @@ SCHEMA = {
 SECRETS = {k for k, v in SCHEMA.items() if v[1] == "secret"}
 # environment variables that override a secret setting
 SECRET_ENV = {"lettermint_token": "LETTERMINT_TOKEN", "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
-              "pushover_token": "PUSHOVER_TOKEN"}
+              "pushover_token": "PUSHOVER_TOKEN", "webhook_url": "WEBHOOK_URL"}
 
 DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 
 # Settings that only accept a fixed set of values: key -> [(value, label), ...]
 CHOICES = {
+    "webhook_format": [("json", "JSON (generic)"), ("slack", "Slack, Mattermost, Rocket.Chat, Google Chat"),
+                       ("discord", "Discord")],
     "theme": [("modern", "Modern"), ("classic", "Classic (SmokePing-style)")],
     "start_offset": [("start", "Together, at the start of each round"), ("random", "Spread over the round (random offset)")],
     "time_zone": [("browser", "Each visitor's own time zone"), ("server", "The server's time zone")],
@@ -162,7 +180,8 @@ def check(s):
     for a in [x.strip() for x in s.get("alert_email_to", "").split(",") if x.strip()]:
         if "@" not in a:
             w.append(f"Notifications: '{a}' doesn't look like an email address.")
-    worst = max(s["ping_count"], s["dns_count"], s["tcp_count"]) * s["probe_spacing_ms"] + s["timeout_ms"]
+    worst = max(max(s["ping_count"], s["tcp_count"]) * s["probe_spacing_ms"] + s["timeout_ms"],
+                s["dns_count"] * s["probe_spacing_ms"] + s["timeout_ms"] * s.get("dns_tries", 1))
     if worst > s["interval"] * 900:
         w.append(
             f"Probes per round × spacing ({worst / 1000:.0f}s) is too long for the {s['interval']}s interval; "

@@ -130,7 +130,9 @@ tr.off td{opacity:.5}
         <label class="field" data-f="spacing_ms"><span>Spacing between probes (ms)</span><input name="spacing_ms" type="number" min="100" max="10000"></label>
         <label class="field" data-f="timeout_ms"><span>Timeout (ms)</span><input name="timeout_ms" type="number" min="100" max="10000"></label>
         <label class="field" data-f="packet_size" id="sizeField"><span>Packet size (bytes)</span><input name="packet_size" type="number" min="12" max="1452"></label>
+        <label class="field" data-f="dns_tries" id="triesField"><span>Attempts per query</span><select name="dns_tries"></select></label>
       </div>
+      <div class="help hidden" id="triesHelp">Like dig: a query without an answer is sent again, up to this many times, and the time of the answered attempt counts. SmokePing's DNS probe uses 3 attempts with a 5000 ms timeout.</div>
       <label class="field" data-f="start_offset"><span>When to measure</span><select name="start_offset"></select>
         <div class="help">Spread gives this target its own fixed random moment in each round, like SmokePing's offset = random, so not every target is sent at once.</div></label>
       <label class="field" data-f="measure_every"><span>Measure every</span><select name="measure_every"></select>
@@ -187,6 +189,7 @@ tr.off td{opacity:.5}
         <label class="check"><input type="checkbox" name="alert_down"> <span><b>Alert when down</b><br><span class="muted small">No replies at all (100% loss).</span></span></label>
         <label class="check"><input type="checkbox" name="alert_telegram"> <span><b>Send a Telegram message</b><br><span class="muted small">To the chat IDs in Settings → Notifications.</span></span></label>
         <label class="check"><input type="checkbox" name="alert_pushover"> <span><b>Send a Pushover notification</b><br><span class="muted small">To the user or group keys in Settings → Notifications.</span></span></label>
+        <label class="check"><input type="checkbox" name="alert_webhook"> <span><b>Send to the webhook</b><br><span class="muted small">To the webhook URL in Settings → Notifications (JSON, Slack or Discord format).</span></span></label>
         <label class="check"><input type="checkbox" name="alert_email"> <span><b>Send an email</b><br><span class="muted small">With none of these, alerts are only listed under Admin → Alerts (and sent to the extra chats below or on targets).</span></span></label>
         <div id="alertPreview" class="apreview"></div>
         <div class="muted small" style="margin-top:6px">Applies to this group and its subgroups that are set to "Same as the parent group".</div>

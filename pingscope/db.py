@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS targets(
   note TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
   alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER,
   hide_address INTEGER NOT NULL DEFAULT 0, spacing_ms INTEGER, timeout_ms INTEGER, packet_size INTEGER,
-  start_offset TEXT NOT NULL DEFAULT '', measure_every INTEGER);
+  start_offset TEXT NOT NULL DEFAULT '', measure_every INTEGER, dns_tries INTEGER,
+  hold TEXT NOT NULL DEFAULT '', hold_until INTEGER);
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -61,7 +62,8 @@ ALERT_MODES = ("inherit", "off", "on")
 
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
                  "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds",
-                 "hide_address", "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every")
+                 "hide_address", "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every",
+                 "dns_tries")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -116,7 +118,7 @@ def verify_password(pw, stored):
 
 
 GROUP_COLS = ("id, parent_id, name, sort, sort_mode, hidden, show_addresses, measure_every, alert_mode, alert_loss, alert_down, alert_email, "
-              "alert_telegram, alert_pushover, alert_rounds, alert_chat_ids")
+              "alert_telegram, alert_pushover, alert_webhook, alert_rounds, alert_chat_ids")
 
 # admin: full access. viewer: sees the dashboard like an admin (hostnames, hidden groups), changes nothing.
 ROLES = ("admin", "viewer")
@@ -150,13 +152,15 @@ class Store:
             self.c.execute("ALTER TABLE targets ADD COLUMN hide_address INTEGER NOT NULL DEFAULT 0")
         for col, ddl in (("spacing_ms", "INTEGER"), ("timeout_ms", "INTEGER"), ("packet_size", "INTEGER"),
                          ("start_offset", "TEXT NOT NULL DEFAULT ''"),
-                         ("measure_every", "INTEGER")):  # per-target probe settings; NULL/'' = group or global
+                         ("measure_every", "INTEGER"), ("dns_tries", "INTEGER"),
+                         ("hold", "TEXT NOT NULL DEFAULT ''"), ("hold_until", "INTEGER")):  # see on_hold()
             if col not in tcols:
                 self.c.execute(f"ALTER TABLE targets ADD COLUMN {col} {ddl}")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]
         for col, ddl in (("alert_mode", "TEXT NOT NULL DEFAULT 'inherit'"), ("alert_loss", "INTEGER"),
                          ("alert_down", "INTEGER NOT NULL DEFAULT 1"), ("alert_email", "INTEGER NOT NULL DEFAULT 1"),
                          ("alert_telegram", "INTEGER NOT NULL DEFAULT 1"), ("alert_pushover", "INTEGER NOT NULL DEFAULT 1"),
+                         ("alert_webhook", "INTEGER NOT NULL DEFAULT 1"),
                          ("alert_rounds", "INTEGER"),
                          ("alert_chat_ids", "TEXT NOT NULL DEFAULT ''"),
                          ("show_addresses", "INTEGER NOT NULL DEFAULT 0"),  # 1 = visitors see hosts and addresses
@@ -233,6 +237,7 @@ class Store:
             g["alert_down"], g["alert_email"] = bool(g["alert_down"]), bool(g["alert_email"])
             g["alert_telegram"] = bool(g["alert_telegram"])
             g["alert_pushover"] = bool(g["alert_pushover"])
+            g["alert_webhook"] = bool(g["alert_webhook"])
         for g in out:  # effective notification settings: the first group up the tree that isn't "inherit"
             p, src = g, None
             while p is not None:
@@ -244,7 +249,7 @@ class Store:
             g["alert_effective"] = {"on": on, "from": src["id"] if src else None,
                                     "loss": src["alert_loss"] if on else None, "down": on and src["alert_down"],
                                     "email": on and src["alert_email"], "telegram": on and src["alert_telegram"],
-                                    "pushover": on and src["alert_pushover"],
+                                    "pushover": on and src["alert_pushover"], "webhook": on and src["alert_webhook"],
                                     "rounds": src["alert_rounds"] if on else None}  # None = the global setting
         for g in out:  # extra Telegram chats: this group's and all parent groups' together
             chats, p = [], g
@@ -326,7 +331,8 @@ class Store:
                                   1 if hidden else 0, 1 if show_addresses else 0))
             return cur.lastrowid
 
-    def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True, rounds=None, pushover=True):
+    def set_alerts(self, gid, mode, loss=None, down=True, email=True, telegram=True, rounds=None, pushover=True,
+                   webhook=True):
         rounds = _rounds(rounds)
         if mode not in ALERT_MODES:
             raise ValueError("Notifications must be inherit, off or on")
@@ -343,9 +349,9 @@ class Store:
             raise ValueError("Choose a packet loss threshold, alerts when down, or both")
         with self.lock, self.c:
             self.c.execute("UPDATE groups SET alert_mode=?, alert_loss=?, alert_down=?, alert_email=?, alert_telegram=?, "
-                           "alert_pushover=?, alert_rounds=? WHERE id=?",
+                           "alert_pushover=?, alert_webhook=?, alert_rounds=? WHERE id=?",
                            (mode, loss, 1 if down else 0, 1 if email else 0, 1 if telegram else 0, 1 if pushover else 0,
-                            rounds, gid))
+                            1 if webhook else 0, rounds, gid))
 
     def set_group_chats(self, gid, value):
         ids = [x for x in re.split(r"[\s,;]+", str(value or "").strip()) if x]
@@ -415,7 +421,7 @@ class Store:
         with self.lock, self.c:
             cur = self.c.execute(
                 f"INSERT INTO targets(group_id, {cols}, sort, created) VALUES (?, {', '.join('?' * len(TARGET_FIELDS))}, ?, ?)",
-                (group_id, *[t[k] for k in TARGET_FIELDS], self._next_sort("targets", "group_id", group_id), int(time.time())),
+                (group_id, *[t.get(k) for k in TARGET_FIELDS], self._next_sort("targets", "group_id", group_id), int(time.time())),
             )
             return cur.lastrowid
 
@@ -432,8 +438,14 @@ class Store:
                 self.c.execute("UPDATE targets SET group_id=?, sort=? WHERE id=?",
                                (group_id, self._next_sort("targets", "group_id", group_id), tid))
 
+    def end_holds(self, now):
+        """Resume targets whose pause or maintenance has ended. Returns how many."""
+        with self.lock, self.c:
+            return self.c.execute("UPDATE targets SET hold='', hold_until=NULL WHERE hold!='' AND hold_until IS NOT NULL "
+                                  "AND hold_until<=?", (int(now),)).rowcount
+
     def set_targets(self, ids, **fields):
-        allowed = {"enabled", "mtr", "group_id", "alert_skip"}
+        allowed = {"enabled", "mtr", "group_id", "alert_skip", "hold", "hold_until"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not ids or not sets:
             return
@@ -636,6 +648,11 @@ class Store:
             self.c.executemany("INSERT OR REPLACE INTO samples VALUES (?,?,?,?,?)",
                                [(k, ts, s, l, pack(sorted(r))) for k, s, l, r in rows])
 
+    def recent_loss(self, since):
+        """Packet loss (%) per series since `since`, for sorting the dashboard by the worst targets."""
+        return {r[0]: round(r[2] / r[1] * 100, 2) for r in
+                self._q("SELECT series, SUM(sent), SUM(lost) FROM samples WHERE ts>=? GROUP BY series", (since,)) if r[1]}
+
     def latest_all(self, since):
         rows = self._q(
             "SELECT s.series, s.ts, s.sent, s.lost, s.rtts FROM samples s "
@@ -803,6 +820,17 @@ def _every(v):
     if not 1 <= v <= 60:
         raise ValueError("Measure every must be between 1 and 60 rounds")
     return v
+
+
+HOLDS = ("pause", "maintenance")
+
+
+def on_hold(target, now):
+    """'pause' (not measured), 'maintenance' (measured, no alerts) or None. hold_until NULL = until resumed."""
+    h = target.get("hold") or ""
+    if h in HOLDS and (target.get("hold_until") is None or target["hold_until"] > now):
+        return h
+    return None
 
 
 def measure_every(target, groups):

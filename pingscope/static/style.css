@@ -73,6 +73,18 @@ label.field .errmsg,div.field .errmsg{color:var(--bad);font-size:12px;margin-top
 .dnswarn{margin:6px 0 2px;padding:6px 10px;border-radius:6px;font-size:12px;line-height:1.45;color:var(--fg);
   background:rgba(124,58,237,.10);border-left:3px solid #7c3aed}
 .hkind.dns,.akind.dns{background:#7c3aed}
+/* "Since your last visit" note on the dashboard */
+.visitnote{position:fixed;right:16px;bottom:16px;z-index:40;max-width:min(380px,calc(100vw - 32px));padding:12px 40px 12px 14px;
+  border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;background:var(--panel);box-shadow:var(--shadow);
+  font-size:13px;line-height:1.5}
+.visitnote>button{position:absolute;top:6px;right:6px}
+/* pause / maintenance of a target */
+.holdchip{display:inline-block;margin:0 6px 2px 0;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;
+  white-space:nowrap;color:var(--fg);background:var(--hover);border:1px solid var(--line)}
+.holdchip.maintenance{border-color:#d97706;background:rgba(217,119,6,.10)}
+.hmenu{position:absolute;z-index:60;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);
+  box-shadow:var(--shadow);display:grid;gap:6px;max-width:calc(100vw - 16px)}
+.hmenu .hrow{display:flex;gap:6px;flex-wrap:wrap}
 /* small monochrome icons (PS.icon) */
 .ico{width:13px;height:13px;vertical-align:-2px;color:var(--faint);flex:none;display:inline-block}
 .btn .ico,.nav a.on .ico{color:inherit}

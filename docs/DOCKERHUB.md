@@ -103,6 +103,7 @@ Images are built for `linux/amd64` and `linux/arm64`.
 | `TZ` | | Time zone for logs and alert messages |
 | `TELEGRAM_BOT_TOKEN` | | Telegram bot token (or set it in the admin panel) |
 | `PUSHOVER_TOKEN` | | Pushover application token (or set it in the admin panel) |
+| `WEBHOOK_URL` | | Webhook URL for alerts (or set it in the admin panel) |
 | `LETTERMINT_TOKEN` | | Lettermint API token for alert emails (or set it in the admin panel) |
 
 Everything else (measurement interval, probes, alerts, users) is set in the admin panel.

@@ -74,7 +74,7 @@ def clean_target(data, probes):
             t["alert_rounds"] = int(ar)
     # optional numbers; None = use the global setting
     limits = {"port": (1, 65535), "count": (1, 100), "spacing_ms": (100, 10000), "timeout_ms": (100, 10000),
-              "packet_size": (12, 1452), "measure_every": (1, 60)}
+              "packet_size": (12, 1452), "measure_every": (1, 60), "dns_tries": (1, 3)}
     for k, (lo, hi) in limits.items():
         v = data.get(k)
         if v in (None, ""):

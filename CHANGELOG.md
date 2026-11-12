@@ -2,6 +2,28 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.023 — 2026-11-12
+
+### Added
+
+- **Pause or maintenance per target** (*Pause…* in the target list, also for a selection): for an hour, 4 hours, a day or until you resume. *Pause* stops measuring, *maintenance* keeps measuring without alerts; both end by themselves and show on the dashboard.
+- **Webhook alerts** next to Telegram, Pushover and email: generic JSON, or ready for Slack/Mattermost/Rocket.Chat/Google Chat (`text`) and Discord (`content`), with a switch per group and in the test alert. The URL can also come from `WEBHOOK_URL`.
+- **DNS attempts per query**, like dig: an unanswered query is sent again (up to 3 times) and the answered attempt's time counts. Default 1; per target under *Probe settings*. The SmokePing import gives DNS targets 3 attempts of 5000 ms, as SmokePing's DNS probe (dig with its defaults) does, which explains why SmokePing showed less DNS loss.
+- **Probe type filter** (ping, DNS, TCP) next to the search box on the dashboard.
+- **"Since your last visit"**: logged-in users get a note with the problems since they last had the dashboard open.
+- Saved secrets (API tokens, the webhook URL) can be removed in *Settings*.
+
+### Changed
+
+- **The alert history records problems of every group**, also without notifications (outages, and packet loss from *History: record packet loss from*, default 10%). Messages still only go out for groups with notifications on, and "resolved" and reminders only for alerts whose start was sent.
+- **Worst first** also sorts by the loss over the last hour and then by latency, so the order means something when everything is fine right now. Paused targets go last.
+
+### Existing installations
+
+- The database gets a few new columns on the first start (DNS attempts and pause per target, webhook switch per group); nothing else changes in the data. `deploy.sh` makes a backup before updating, as always.
+- Measurements stay the same: 1 DNS attempt unless you change it, no target is paused, the webhook is off until you enter a URL.
+- The *History* page and the *History* count in the menu now also show problems of groups without notifications. No extra messages are sent.
+
 ## 0.022 — 2026-11-12 · [8ca1aaa](https://github.com/joebafra/PingScope/commit/8ca1aaa)
 
 ### Changed

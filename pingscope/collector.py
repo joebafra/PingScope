@@ -6,7 +6,7 @@ import zlib
 
 from . import settings as settings_mod
 from .alerts import Alerter
-from .db import measure_every, summary
+from .db import measure_every, on_hold, summary
 from .mtr import MtrScheduler
 from .probes import PROBES, PartialFailure, Result
 from .resolver import Resolver
@@ -23,6 +23,7 @@ class Collector:
         self._mail_task = None
         self.series = {}      # target id -> [Series]
         self.latest = {}      # series key -> summary
+        self.loss_1h = {}     # series key -> packet loss (%) over the last hour
         self.last_run = None
         self.last_duration = None
         self.warnings = []
@@ -35,6 +36,7 @@ class Collector:
     async def run(self):
         await self.mtr.init()
         self.latest = await asyncio.to_thread(self.store.latest_all, int(time.time()) - 3600)
+        self.loss_1h = await asyncio.to_thread(self.store.recent_loss, int(time.time()) - 3600)
         await self.plan_only()
         while True:
             interval = self.store.settings()["interval"]
@@ -68,12 +70,15 @@ class Collector:
         t0 = time.monotonic()
         s = self.store.settings()
         self.warnings = settings_mod.check(s)
+        if await asyncio.to_thread(self.store.end_holds, ts):
+            log.info("Pause or maintenance ended for some targets")
         targets = await asyncio.to_thread(self.store.targets, True)
         series = await self.resolver.plan(targets, s["resolve_interval"])
         self._set_series(series)
         self.warnings += too_long(series, s)
         groups = {g["id"]: g for g in await asyncio.to_thread(self.store.groups)}
-        due = [x for x in series if is_due(x.target, groups, s, ts)]  # targets measured every N rounds skip the rest
+        due = [x for x in series if is_due(x.target, groups, s, ts)  # targets measured every N rounds skip the rest
+               and on_hold(x.target, ts) != "pause"]  # paused targets aren't measured (a gap in their graphs)
         results, errors = await measure_spread(due, s, ts)
         self.warnings += [f"The {p} probe could not run in the last round, so no data was recorded for it: {e}"
                           for p, e in errors.items()]
@@ -85,6 +90,7 @@ class Collector:
             rows.append((x.key, r.sent, r.lost, r.rtts))
             self.latest[x.key] = summary(ts, r.sent, r.lost, r.rtts)
         await asyncio.to_thread(self.store.insert_samples, ts, rows)
+        self.loss_1h = await asyncio.to_thread(self.store.recent_loss, ts - 3600)
         self.mtr.schedule(ts, series, results, s)
         try:
             events = await asyncio.to_thread(self.alerter.check, ts, series, results, s)

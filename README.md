@@ -85,6 +85,8 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Every minute by default**, with 20 pings of 56 bytes (or 10 DNS queries / TCP connects) per target per round, spaced one second apart. Interval, counts, spacing, timeout and ping packet size are settings.
 - **Per-target probe settings:** a target can have its own probes per round, spacing, timeout and packet size (*Edit target → Probe settings*), like a separate probe definition in SmokePing.
 - **Interval per group or target:** measure some targets less often, e.g. a gateway every minute and a website every 5 minutes (*Measure every* in the group dialog or under *Probe settings*, in whole rounds). Graphs and alerts follow each target's own rounds.
+- **Pause or maintenance** per target, for an hour, 4 hours, a day or until you resume (*Pause…* in the target list, also for a selection): *pause* stops measuring (a gap in the graphs), *maintenance* keeps measuring without alerts. Both end by themselves.
+- **DNS attempts per query:** like dig, a DNS query without an answer can be sent again (up to 3 times) and the time of the answered attempt counts. Default 1, so every lost query shows; SmokePing's DNS probe uses dig's defaults (3 attempts of 5 s), so imported DNS targets get the same.
 - **Together or spread:** all targets start at the beginning of each round, or each target gets its own fixed random moment in the round (like SmokePing's `offset = random`), so not everything is sent at once. Set it for all targets and override it per target.
 - **DNS problems don't look like outages:** when the A/AAAA lookup of a hostname target fails (the record is gone, or the DNS server times out or fails), PingScope keeps measuring the **last known address for 24 hours**. The target stays up as long as it answers, with a purple **DNS** badge and an explanation on the graph, and a **DNS alert** is sent. After 24 hours without a working lookup the target is shown as **down** (with a down alert). The last known address is kept in the database, so a restart during a DNS problem doesn't matter. A target whose IPv6 was removed on purpose: set it to *IPv4 only*.
 - **Honest data:** when a probe can't run locally (fping missing, no IPv6 on the server, out of processes), the round is left as a gap instead of being recorded as 100% packet loss, and the error is shown in the admin panel.
@@ -110,11 +112,11 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 
 ### Dashboard
 
-- **Overview** of all targets with the current latency and loss per family, sortable by group order, worst first or name, plus tiles with totals: healthy, with packet loss, down, IPv6 coverage.
+- **Overview** of all targets with the current latency and loss per family, sortable by group order, worst first (status, loss now, loss over the last hour, then latency) or name, plus tiles with totals: healthy, with packet loss, down, IPv6 coverage.
 - **Problems**: only the targets with packet loss or no replies in the last round.
-- **History**: active and resolved alerts per day for the last 24 hours, 7, 30 or 90 days, with duration, worst loss and totals.
+- **History**: problems per day for the last 24 hours, 7, 30 or 90 days, with duration, worst loss and totals. Also for groups without notifications, so nothing is missed; logged-in users get a note with the problems **since their last visit**.
 - **Nested groups** in the menu, each with a status dot and target count; group pages show small graphs for every target in the group and its subgroups.
-- **Search** (press <kbd>/</kbd>), an **IPv4 / IPv6 / both** filter and the period buttons in the header. Your choices are remembered in the browser.
+- **Search** (press <kbd>/</kbd>), a **probe type** filter (ping, DNS, TCP), an **IPv4 / IPv6 / both** filter and the period buttons in the header. Your choices are remembered in the browser.
 - **Light, dark or system:** a switch in the header lets every visitor pick light, dark or "follow the system"; the choice is remembered in their browser and also applies to the admin panel.
 - **Two styles:** *Modern* (default, with light and dark mode) and *Classic*, a SmokePing-style look with a dark menu, framed graphs, a title above every graph and the median rtt / packet loss / loss colour legend below it.
 - **Your own branding:** site title and welcome text.
@@ -134,7 +136,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 ### Alerts: Telegram, Pushover and email
 
 - Notifications are set **per group** (subgroups can follow their parent): alert at a **packet-loss threshold** (for example 10% or more), when a target is **down** (no replies at all), or both. Hostname targets also get a **DNS alert** when their lookup fails for *N* rounds (see *DNS problems* under [Measurements](#measurements)), and a message when DNS works again.
-- Delivery by **Telegram** (your own bot), **[Pushover](https://pushover.net)** and/or **email** via [Lettermint](https://lettermint.co). Each can be switched on per group.
+- Delivery by **Telegram** (your own bot), **[Pushover](https://pushover.net)**, **email** via [Lettermint](https://lettermint.co) and/or a **webhook** (generic JSON, or ready for Slack, Mattermost, Google Chat and Discord). Each can be switched on per group.
 - **No alert storms:** a problem must last *N* rounds in a row before an alert starts (default 3), and *N* good rounds before it counts as resolved. *N* can be set per group and overridden per target (1 for a critical link, 5 for a flaky one).
 - Everything that starts, gets worse or ends in the **same round goes out in one message**, so a large outage sends one message instead of hundreds. A host that is measured twice (for example a ping target and a DNS target for the same name server, or the same host in two groups) gets **one line** with the worst state and both measurements.
 - Optional **"resolved"** messages and **reminders** every *X* hours while a problem lasts.
@@ -164,6 +166,7 @@ Paste your SmokePing `Targets` section (or a whole config file, or upload it) in
 - `probe` is inherited like in SmokePing: `FPing` → ping, `FPing6` → ping over IPv6 only, `DNS` → DNS (with `lookup` and `server`), `TCPPing` → TCP.
 - Your own probes from the `*** Probes ***` section (for example `++ FPingGateway` under `+ FPing`) are understood too: their `pings`, `packetsize`, `timeout`, `hostinterval` and `offset = random` become the probe settings of the targets that use them. A probe `step` that is a multiple of the 60 s interval (e.g. `step = 300`) becomes *measure every 5 rounds* on its targets.
 - **Paste the `*** Probes ***` section along with the targets**, or the probe settings are unknown. SmokePing often keeps it in a separate file (`@include /etc/smokeping/config.d/Probes`); included files can't be read, so paste their contents. A probe that isn't defined is recognised by its name (`FPingFast` → ping, `FPing6Slow` → ping over IPv6, `DNSQuad9` → DNS, `TCPPing443` → TCP) and imported with the default settings, with one warning per probe.
+- **DNS targets get 3 attempts per query with a 5000 ms timeout**, like SmokePing's DNS probe, which runs `dig` with its defaults. A lost query is then retried instead of counted as loss, as you were used to (*Edit target → Probe settings → Attempts per query*).
 - SmokePing's `forks` and `concurrentprobes` aren't needed: every round all targets are measured in parallel (see [How it works](#how-it-works)). `mininterval` is ignored; fping waits 5 ms between packets to different hosts.
 - The known IPv6 addresses of the **root servers and large public resolvers** (Google, Cloudflare, Quad9, OpenDNS, NextDNS) are added automatically, so they're measured over IPv6 right away.
 - The preview shows the resulting tree and points out outdated addresses and duplicate targets.
@@ -204,7 +207,7 @@ The installer asks for your hostname, email and port (8080, or another one if th
 
 - Full guide, including installing without Docker and using another reverse proxy: **[docs/INSTALL.md](docs/INSTALL.md)**
 - HTTPS details and changing the hostname: **[HTTPS / SSL](docs/INSTALL.md#4-https--ssl-certificate-lets-encrypt)**
-- Telegram, Pushover and email: **[Notifications](docs/INSTALL.md#4a-notifications-telegram-pushover-and-email)**
+- Telegram, Pushover, email and webhooks: **[Notifications](docs/INSTALL.md#4a-notifications-telegram-pushover-email-and-webhooks)**
 - Updates, backups and useful commands: **[section 5](docs/INSTALL.md#5-updating-backups-and-useful-commands)**
 
 ### Docker image
@@ -279,6 +282,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Measurement interval | 60 s | 30–3600 | The length of a round: every target is measured once per round, or every N rounds when its group or the target says so. |
 | Pings per round | 20 | 1–100 | ICMP echo requests per target per round. |
 | DNS queries per round | 10 | 1–100 | Queries per DNS target per round. |
+| DNS attempts per query | 1 | 1–3 | Like dig: a query without an answer is sent again; the answered attempt's time counts. SmokePing (dig) uses 3 attempts of 5000 ms. |
 | TCP connects per round | 10 | 1–100 | Connection attempts per TCP target per round. |
 | Spacing between probes | 1000 ms | 100–10000 | Time between two probes to the same target within a round. |
 | Probe timeout | 1500 ms | 100–10000 | A probe without a reply within this time counts as lost. |
@@ -316,6 +320,9 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Telegram chat IDs | | | Default chats for all alerts, comma-separated. Use *Admin → Alerts → Find chat IDs*. |
 | Pushover application token | | | From pushover.net → *Create an Application/API Token*. Stored on the server and never shown again. `PUSHOVER_TOKEN` takes priority. |
 | Pushover user or group keys | | | Where Pushover alerts go, comma-separated. |
+| Webhook URL | | | Alerts are POSTed here. Stored on the server and never shown again; *Remove* clears it. `WEBHOOK_URL` takes priority. |
+| Webhook format | JSON | | *JSON* (all fields, for scripts, Home Assistant, n8n), *Slack* (`text`, also Mattermost, Rocket.Chat, Google Chat) or *Discord* (`content`). |
+| History: record packet loss from | 10% | 0–100 | Groups without notifications still get their problems in the history: outages, and loss from this percentage. 0 = outages only. |
 | Rounds in a row before alerting | 3 | 1–60 | How long a problem must last before an alert, and how long it must be fine before it's resolved. Groups and targets can override it. |
 | Notify when resolved | on | | Also send a message when a target is fine again. |
 | Reminder while still down | 0 h | 0–168 | Repeat the alert every this many hours while it lasts. 0 = never. |
@@ -338,6 +345,7 @@ Per **group** you set notifications (on / off / same as the parent group), the l
 | `TZ` | `Europe/Amsterdam` | Time zone for log lines and alert messages. |
 | `TELEGRAM_BOT_TOKEN` | | Telegram bot token, instead of entering it in the admin panel. |
 | `PUSHOVER_TOKEN` | | Pushover application token, instead of entering it in the admin panel. |
+| `WEBHOOK_URL` | | Webhook URL for alerts, instead of entering it in the admin panel. |
 | `LETTERMINT_TOKEN` | | Lettermint API token, instead of entering it in the admin panel. |
 
 For `deploy.sh` (set them in the systemd service): `PINGSCOPE_BRANCH` (branch to deploy, default `main`), `PINGSCOPE_KEEP_BACKUPS` (default 5) and `PINGSCOPE_HEALTH_TIMEOUT` (seconds, default 120).

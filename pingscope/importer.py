@@ -118,6 +118,7 @@ def parse_smokeping(text):
 
     steps = {}  # probe step (seconds) that differs from PingScope's interval -> probe names
     unknown = {}  # probe that isn't defined or supported -> how its targets were imported (one warning per probe)
+    dig_like = []  # DNS targets that get dig's retries, like SmokePing's DNS probe
 
     def probe_settings(t, pdef, v):
         """Settings from a SmokePing probe definition: pings, packetsize, timeout, hostinterval, offset."""
@@ -166,6 +167,13 @@ def parse_smokeping(text):
         if probe in ("dns", "tcp") and v.get("port"):
             t["port"] = v["port"]
         probe_settings(t, pdef, v)
+        if probe == "dns":
+            # SmokePing's DNS probe runs "dig @server name" with dig's defaults: 3 attempts of 5 seconds each, and the
+            # time of the answered attempt. The same here, so the graphs look like they did in SmokePing.
+            t["dns_tries"] = 3
+            if not (pdef and pdef["vars"].get("timeout")):
+                t["timeout_ms"] = 5000
+            dig_like.append(t["name"])
         default_count = {"ping": DEFAULTS["ping_count"], "dns": DEFAULTS["dns_count"], "tcp": DEFAULTS["tcp_count"]}[probe]
         if v.get("pings") and str(v["pings"]).strip() != str(default_count):
             t["count"] = v["pings"]
@@ -202,6 +210,10 @@ def parse_smokeping(text):
         else:
             warnings.append(f"Line {u['line']}: probe '{name}' isn't defined in this config and isn't a known type; "
                             f"{many} imported as ping.")
+    if dig_like:
+        warnings.append(f"{len(dig_like)} DNS target{'s get' if len(dig_like) > 1 else ' gets'} 3 attempts per query with "
+                        "a 5000 ms timeout, like SmokePing's DNS probe (dig's defaults), so lost queries are retried as "
+                        "in SmokePing. Change it under Edit target → Probe settings.")
     if any(not u["pdef"] for u in unknown.values()):
         warnings.append("To keep the settings of these probes (pings, packet size, timeout, step and offset), paste the "
                         "*** Probes *** section as well. SmokePing often keeps it in a separate file, such as "
@@ -328,7 +340,7 @@ def apply(store, tree, mode="merge", refs=None):
                 try:
                     store.set_alerts(gid, g["alert_mode"], g.get("alert_loss"), g.get("alert_down", True),
                                      g.get("alert_email", True), g.get("alert_telegram", True),
-                                     g.get("alert_rounds"), g.get("alert_pushover", True))
+                                     g.get("alert_rounds"), g.get("alert_pushover", True), g.get("alert_webhook", True))
                 except ValueError:
                     pass
             existing_groups.append({"id": gid, "parent_id": parent_id, "name": name})
@@ -360,7 +372,7 @@ def export(store, include_settings=True, refs=False):
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
             "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds", "hide_address",
-            "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every")
+            "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every", "dns_tries")
 
     def walk(parent_id):
         out = []
@@ -371,7 +383,7 @@ def export(store, include_settings=True, refs=False):
                 "alert_mode": g.get("alert_mode", "inherit"), "alert_loss": g.get("alert_loss"),
                 "alert_down": bool(g.get("alert_down", True)), "alert_email": bool(g.get("alert_email", True)),
                 "alert_telegram": bool(g.get("alert_telegram", True)), "alert_rounds": g.get("alert_rounds"),
-                "alert_pushover": bool(g.get("alert_pushover", True)),
+                "alert_pushover": bool(g.get("alert_pushover", True)), "alert_webhook": bool(g.get("alert_webhook", True)),
                 "alert_chat_ids": g.get("alert_chat_ids", ""),
                 "targets": [{**{k: t[k] for k in keep}, **({"ref": t["id"]} if refs else {})}
                             for t in targets if t["group_id"] == g["id"]],

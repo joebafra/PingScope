@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __commit__, __version__, alerts as alerts_mod, history as history_mod, importer, rdns, settings as settings_mod
 from .collector import Collector, measure
-from .db import Store, measure_every
+from .db import Store, measure_every, on_hold
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
 from .probes import PROBES
 from .resolver import Resolver, Series, lookup
@@ -269,13 +269,14 @@ def _series_json(x, private=True, address=False):
                                             else ("problem", "since", "until", "rr"))}
     if not private:  # visitors: no hostnames, addresses or error texts that contain them
         out = {"key": x.key, "family": x.family, "unresolved": x.address is None,
-               "mtr": bool(x.path), "last": collector.latest.get(x.key), "dns": dns}
+               "mtr": bool(x.path), "last": collector.latest.get(x.key), "dns": dns,
+               "loss_1h": collector.loss_1h.get(x.key)}
         if address:  # the target's group shows addresses to visitors
             out["address"] = x.address
         return out
     return {"key": x.key, "family": x.family, "address": x.address, "error": x.error, "via": x.via,
             "unresolved": x.address is None, "mtr": bool(x.path), "path": x.path,
-            "last": collector.latest.get(x.key), "dns": dns}
+            "last": collector.latest.get(x.key), "dns": dns, "loss_1h": collector.loss_1h.get(x.key)}
 
 
 def _shows_address(t, groups):
@@ -321,8 +322,13 @@ def tree(request: Request, _=Depends(can_view)):
             "pings": t["count"] or (s[probe.count_setting] if probe else None),
             "interval": s["interval"] * measure_every(t, by_id),  # seconds between two measurements of this target
         }
+        hold = on_hold(t, time.time())
+        if hold:
+            item["hold"] = {"mode": hold, "until": t["hold_until"]}
         if t["probe"] == "ping":
             item["size"] = t["packet_size"] or s["ping_size"]
+        elif t["probe"] == "dns":
+            item["tries"] = t["dns_tries"] or s["dns_tries"]  # attempts per query, like dig
         if addr:  # the DNS query name is never shown on the dashboard, only in the admin edit form
             item.update(host=t["host"], host_v6=t["host_v6"],
                         port=t["port"] if t["probe"] != "ping" else None)
@@ -503,7 +509,8 @@ def create_group(body: dict = Body(...)):
         if body.get("alert_mode"):
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
-                             body.get("alert_rounds"), bool(body.get("alert_pushover", True)))
+                             body.get("alert_rounds"), bool(body.get("alert_pushover", True)),
+                             bool(body.get("alert_webhook", True)))
     except ValueError as e:
         raise _bad(e)
     return {"id": gid}
@@ -526,7 +533,8 @@ def update_group(gid: int, body: dict = Body(...)):
         if "alert_mode" in body:
             store.set_alerts(gid, body["alert_mode"], body.get("alert_loss"), bool(body.get("alert_down", True)),
                              bool(body.get("alert_email", True)), bool(body.get("alert_telegram", True)),
-                             body.get("alert_rounds"), bool(body.get("alert_pushover", True)))
+                             body.get("alert_rounds"), bool(body.get("alert_pushover", True)),
+                             bool(body.get("alert_webhook", True)))
     except KeyError:
         raise HTTPException(404, "Group not found")
     except ValueError as e:
@@ -590,6 +598,13 @@ def bulk_targets(body: dict = Body(...)):
         store.set_targets(ids, enabled=int(action == "enable"))
     elif action in ("alerts_off", "alerts_on"):
         store.set_targets(ids, alert_skip=int(action == "alerts_off"))
+    elif action == "hold":  # pause (not measured) or maintenance (no alerts) for some hours, or until resumed
+        mode = body.get("mode") or ""
+        if mode not in ("", "pause", "maintenance"):
+            raise HTTPException(400, "mode must be pause, maintenance or empty (resume)")
+        hours = body.get("hours")
+        until = int(time.time() + float(hours) * 3600) if mode and hours else None
+        store.set_targets(ids, hold=mode, hold_until=until)
     elif action == "move":
         gid = int(body.get("group_id") or 0)
         if not store.group(gid):
@@ -846,9 +861,11 @@ async def https_status(request: Request):
 @admin.put("/settings")
 def save_settings(body: dict = Body(...)):
     body = {k: v for k, v in body.items() if not k.endswith("_set")}
+    clear = {k for k in settings_mod.SECRETS if body.pop(k + "_clear", False)}  # the Remove button of a saved secret
     for k in settings_mod.SECRETS:  # empty = keep the stored secret
         if not str(body.get(k) or "").strip():
             body.pop(k, None)
+    body.update({k: "" for k in clear})
     try:
         s = store.save_settings(body)
     except ValueError as e:
@@ -877,7 +894,7 @@ def alert_list():
     s = store.settings()
     return {"alerts": rows, "now": int(time.time()), "email_problem": alerts_mod.email_ready(s),
             "telegram_problem": alerts_mod.telegram_ready(alerts_mod.with_contacts(s, store)),
-            "pushover_problem": alerts_mod.pushover_ready(s),
+            "pushover_problem": alerts_mod.pushover_ready(s), "webhook_problem": alerts_mod.webhook_ready(s),
             "target_chats": sum(1 for t in targets.values() if t.get("alert_chat_ids")),
             "group_chats": sum(1 for g in groups.values() if g.get("alert_chat_ids")),
             "last_error": collector.alerter.last_error, "last_sent": collector.alerter.last_sent,

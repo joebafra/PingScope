@@ -20,7 +20,7 @@ def build_query(qname, qtype):
 
 class _Proto(asyncio.DatagramProtocol):
     def __init__(self, qid, fut):
-        self.qid, self.fut = qid, fut
+        self.qid, self.fut = qid, fut  # fut is replaced for every attempt
 
     def datagram_received(self, data, addr):
         if len(data) >= 12 and int.from_bytes(data[:2], "big") == self.qid and data[2] & 0x80 and not self.fut.done():
@@ -31,22 +31,32 @@ class _Proto(asyncio.DatagramProtocol):
             self.fut.set_exception(exc)
 
 
-async def query_once(address, family, port, qname, qtype, timeout_s):
+async def query_once(address, family, port, qname, qtype, timeout_s, tries=1):
+    """Response time (ms) of one DNS query, or None. Like dig: without an answer within timeout_s the query is sent
+    again (same id), up to `tries` times, and the time since the last send counts; a late answer to an earlier send
+    also counts."""
     loop = asyncio.get_running_loop()
-    fut = loop.create_future()
     qid, packet = build_query(qname, qtype)
+    proto = _Proto(qid, loop.create_future())
     try:
         transport, _ = await loop.create_datagram_endpoint(
-            lambda: _Proto(qid, fut), remote_addr=(address, port),
+            lambda: proto, remote_addr=(address, port),
             family=socket.AF_INET if family == 4 else socket.AF_INET6)
     except OSError:
         return None
     try:
-        t0 = time.perf_counter()
-        transport.sendto(packet)
-        t1 = await asyncio.wait_for(fut, timeout_s)
-        return (t1 - t0) * 1000
-    except (asyncio.TimeoutError, OSError):
+        for attempt in range(max(1, tries)):
+            if attempt:
+                proto.fut = loop.create_future()
+            t0 = time.perf_counter()
+            transport.sendto(packet)
+            try:
+                t1 = await asyncio.wait_for(asyncio.shield(proto.fut), timeout_s)
+                return (t1 - t0) * 1000
+            except asyncio.TimeoutError:
+                continue
+        return None
+    except OSError:
         return None
     finally:
         transport.close()
@@ -61,6 +71,13 @@ class DnsProbe(Probe):
     fields = ("dns_query", "dns_type", "port")
     default_port = 53
 
+    def tries(self, series, s):
+        return series.target.get("dns_tries") or s.get("dns_tries", 1)
+
+    def duration(self, series, s):
+        return (self.count(series, s) * self.spacing_ms(series, s)
+                + self.timeout_ms(series, s) * self.tries(series, s)) / 1000
+
     async def run(self, series, s):
         async def measure(x):
             cnt = self.count(x, s)
@@ -71,8 +88,9 @@ class DnsProbe(Probe):
             qtype = t.get("dns_type") or ("NS" if qname == "." else "A")
             port = t.get("port") or 53
             timeout = self.timeout_ms(x, s) / 1000
+            tries = self.tries(x, s)
             vals = await spaced(cnt, self.spacing_ms(x, s) / 1000,
-                                lambda: query_once(x.address, x.family, port, qname, qtype, timeout))
+                                lambda: query_once(x.address, x.family, port, qname, qtype, timeout, tries))
             return x.key, to_result(vals)
 
         return dict(await asyncio.gather(*[measure(x) for x in series]))

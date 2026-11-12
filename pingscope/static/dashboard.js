@@ -8,7 +8,7 @@ const SHORT = {'1h': '1h', '3h': '3h', '6h': '6h', '12h': '12h', '1d': 'Day', '7
 const periods = () => (S.data?.periods || ['3h', '1d', '7d', '30d', '1y']).filter(r => RANGES[r]);
 const S = {
   data: null, groups: new Map(), kids: new Map(), targets: new Map(), byGroup: new Map(),
-  fam: store.get('ps_fam', 'all'), range: store.get('ps_range', '1d'), q: '',
+  fam: store.get('ps_fam', 'all'), range: store.get('ps_range', '1d'), q: '', ptype: store.get('ps_ptype', ''),
   expanded: new Set(store.get('ps_open', [])), sort: store.get('ps_sort', 'order'), sig: '',
   zoom: {},  // range -> {start, end}: graphs of that range show a period selected by dragging
 };
@@ -44,10 +44,13 @@ const kids = gid => S.kids.get(gid) || [];
 const famSeries = (t, f) => t.series.find(s => s.family === f);
 const visibleFams = () => S.fam === 'all' ? [4, 6] : [+S.fam];
 const tStatus = t => worst(t.series.filter(s => S.fam === 'all' || s.family === +S.fam).map(status));
-const isProblem = t => ['loss', 'down'].includes(tStatus(t)) || t.series.some(s => s.dns);  // DNS: still measured, but a problem
+const isProblem = t => t.hold?.mode !== 'pause' && (['loss', 'down'].includes(tStatus(t)) || t.series.some(s => s.dns));  // DNS: still measured, but a problem
+const holdChip = t => t.hold ? `<span class="holdchip ${t.hold.mode}" title="${t.hold.mode === 'pause' ? 'Not measured' : 'Measured, no alerts'}">${t.hold.mode === 'pause' ? 'Paused' : 'Maintenance'}${t.hold.until ? ' until ' + fmtShort(t.hold.until) : ''}</span>` : '';
 function gPath(gid){ const out = []; while (gid && S.groups.has(gid)){ const g = S.groups.get(gid); out.unshift(g); gid = g.parent_id; } return out; }
 const pathText = gid => gPath(gid).map(g => g.name).join(' › ');
+const byType = t => !S.ptype || t.probe === S.ptype;  // the probe type filter next to the search box
 function matches(t){
+  if (!byType(t)) return false;
   if (!S.q) return true;
   const hay = [t.name, t.host, t.host_v6, pathText(t.group_id), ...t.series.map(s => s.address)].join(' ').toLowerCase();
   return S.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
@@ -187,7 +190,7 @@ function viewOverview(problemsOnly){
   fillOverview(problemsOnly);
 }
 function fillOverview(problemsOnly){
-  const d = S.data, all = d.targets;
+  const d = S.data, all = d.targets.filter(byType);
   const series = all.flatMap(t => t.series);
   const cnt = st => series.filter(s => status(s) === st).length;
   const with6 = all.filter(t => famSeries(t, 6)).length;
@@ -199,20 +202,27 @@ function fillOverview(problemsOnly){
     `<div class="tile"><b>${all.length ? Math.round(with6 / all.length * 100) : 0}%</b><span>IPv6 coverage · ${with6} of ${all.length}</span><div class="bar"><i style="width:${all.length ? with6 / all.length * 100 : 0}%"></i></div></div>`;
   let rows = (S.ordered || all).filter(matches);
   if (problemsOnly) rows = rows.filter(isProblem);
+  // Worst first: status now, loss in the last round, loss over the last hour, then the highest latency
   const rank = {down: 3, loss: 2, unknown: 1, ok: 0};
-  const maxLoss = t => Math.max(0, ...t.series.map(s => s.error ? 100 : s.last?.loss ?? 0));
-  if (S.sort === 'problems' || problemsOnly) rows.sort((a, b) => rank[tStatus(b)] - rank[tStatus(a)] || maxLoss(b) - maxLoss(a));
+  const vis = t => t.series.filter(s => S.fam === 'all' || s.family === +S.fam);
+  const most = (t, f) => Math.max(0, ...vis(t).map(f));
+  const lastLoss = t => most(t, s => s.error ? 100 : s.last?.loss ?? 0);
+  const hourLoss = t => most(t, s => s.loss_1h ?? 0);
+  const latency = t => most(t, s => s.last?.median ?? 0);
+  const rk = t => t.hold?.mode === 'pause' ? -1 : rank[tStatus(t)];  // paused: not measured, at the bottom
+  if (S.sort === 'problems' || problemsOnly) rows.sort((a, b) => rk(b) - rk(a) ||
+    lastLoss(b) - lastLoss(a) || hourLoss(b) - hourLoss(a) || latency(b) - latency(a));
   else if (S.sort === 'name') rows.sort((a, b) => a.name.localeCompare(b.name));
   const fams = visibleFams();
   $$('.c4').forEach(e => e.classList.toggle('hidden', !fams.includes(4)));
   $$('.c6').forEach(e => e.classList.toggle('hidden', !fams.includes(6)));
   $('#rowcount').textContent = `${rows.length} target${rows.length === 1 ? '' : 's'}`;
   $('#rows').innerHTML = rows.length ? rows.map(t =>
-    `<tr class="click" data-t="${t.id}"><td><div class="tname">${esc(t.name)} <span class="mobile-only">${probeBadge(t.probe)}</span></div>` +
+    `<tr class="click" data-t="${t.id}"><td><div class="tname">${esc(t.name)} ${holdChip(t)}<span class="mobile-only">${probeBadge(t.probe)}</span></div>` +
     (t.host || t.host_v6 ? `<div class="tpath mono">${esc(t.host || t.host_v6)}</div>` : `<div class="tpath mobile-only">${esc(pathText(t.group_id))}</div>`) + '</td>' +
     `<td class="col-group tpath">${esc(pathText(t.group_id))}</td><td class="col-type">${probeBadge(t.probe)}</td>` +
-    fams.map(f => `<td class="col-fam">${valHTML(famSeries(t, f))}</td>`).join('') +
-    `<td class="col-both">${fams.map(f => `<div class="small"><span class="faint">v${f}</span> ${valHTML(famSeries(t, f))}</div>`).join('')}</td></tr>`).join('')
+    fams.map(f => `<td class="col-fam">${t.hold?.mode === 'pause' && famSeries(t, f) ? '<span class="val none">paused</span>' : valHTML(famSeries(t, f))}</td>`).join('') +
+    `<td class="col-both">${fams.map(f => `<div class="small"><span class="faint">v${f}</span> ${t.hold?.mode === 'pause' && famSeries(t, f) ? '<span class="val none">paused</span>' : valHTML(famSeries(t, f))}</div>`).join('')}</td></tr>`).join('')
     : `<tr><td colspan="5" class="empty">${problemsOnly ? 'No problems right now.' : S.q ? 'No targets match your search.' : 'No targets yet. Add them in the admin panel.'}</td></tr>`;
 }
 
@@ -226,7 +236,7 @@ async function viewHistory(){
   const days = store.get('ps_hdays', 7), seq = ++histSeq;
   if (!$('#hbody')){
     main.innerHTML = `<h1>Alert history</h1>
-      <div class="muted">Packet loss, outages and DNS problems that triggered an alert, for groups with notifications on.</div>
+      <div class="muted">Packet loss, outages and DNS problems, also in groups without notifications.</div>
       <div class="toolbar" style="margin-top:14px"><div class="seg" id="hdays">${[[1, '24 hours'], [7, '7 days'], [30, '30 days'], [90, '90 days']].map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div><span class="muted small" id="hcount"></span></div>
       <div class="tiles" id="htiles"></div><div id="hbody"><div class="empty">Loading…</div></div>`;
     seg('#hdays', () => String(store.get('ps_hdays', 7)), v => { store.set('ps_hdays', +v); viewHistory(); });
@@ -276,7 +286,7 @@ function viewGroup(gid){
     (kids(gid).length ? `<div class="subs">${kids(gid).map(c => `<a class="chip" href="#/g/${c.id}"><span class="dot ${worst(c._all.flatMap(t => t.series.map(status)))}"></span>${esc(c.name)} <span class="faint">${c._all.length}</span></a>`).join('')}</div>` : '') +
     '<div id="secs"></div><div class="legend" style="margin-top:8px">' + PS.legendHTML() + '</div>';
   const box = $('#secs');
-  if (!shown){ box.innerHTML = `<div class="empty">${S.q ? 'No targets match your search.' : 'No targets in this group yet.'}</div>`; return; }
+  if (!shown){ box.innerHTML = `<div class="empty">${S.q || S.ptype ? 'No targets match your search or type filter.' : 'No targets in this group yet.'}</div>`; return; }
   for (const sec of sections){
     if (sec.g.id !== gid){
       const h = document.createElement('div'); h.className = 'section-h';
@@ -356,7 +366,7 @@ function probeLine(t){
   if (!t.pings) return '';
   const every = `every ${t.interval || S.data.interval} seconds`;
   return t.probe === 'ping' ? `${t.pings} ICMP Echo Pings (${t.size} Bytes) ${every}`
-    : t.probe === 'dns' ? `${t.pings} DNS Queries ${every}`
+    : t.probe === 'dns' ? `${t.pings} DNS Queries${t.tries > 1 ? ` (up to ${t.tries} attempts each)` : ''} ${every}`
     : t.probe === 'tcp' ? `${t.pings} TCP Connects ${every}` : `${t.pings} probes ${every}`;
 }
 
@@ -369,7 +379,7 @@ function viewTarget(tid){
   const s4 = famSeries(t, 4), s6 = famSeries(t, 6);
   main.innerHTML =
     `<div class="crumbs"><a href="#/">Overview</a>${path.map(p => ` › <a href="#/g/${p.id}">${esc(p.name)}</a>`).join('')}</div>` +
-    `<div class="row" style="flex-wrap:wrap"><h1 style="margin:0">${esc(t.name)}</h1>${probeBadge(t.probe, S.data.probes[t.probe])}` +
+    `<div class="row" style="flex-wrap:wrap"><h1 style="margin:0">${esc(t.name)}</h1>${probeBadge(t.probe, S.data.probes[t.probe])}${holdChip(t)}` +
     (S.data.can_edit ? `<a class="btn sm" href="admin#edit=${t.id}" style="margin-left:auto">Edit</a>` : '') + '</div>' +
     (t.host !== undefined ? `<div class="info">` +
       (t.host ? `<span>Host <b>${esc(t.host)}</b>${PS.copyBtn(t.host)}</span>` : '') +
@@ -516,10 +526,32 @@ function updateValues(){
     el.innerHTML = valHTML(s);
   }
 }
+// Logged in: a note with the problems since the last time the dashboard was open in this browser (more than 15 min ago).
+async function sinceLastVisit(d){
+  const prev = store.get('ps_last_visit', null);
+  if (!d.logged_in || !prev || d.now - prev < 900) return;
+  try {
+    const r = await api(`api/history?days=${Math.min(90, Math.ceil((d.now - prev) / 86400) + 1)}`);
+    const list = r.alerts.filter(a => a.started >= prev || (a.ended && a.ended >= prev) || !a.ended);
+    if (!list.length) return;
+    const open = list.filter(a => !a.ended).length;
+    const box = document.createElement('div'); box.className = 'visitnote';
+    box.innerHTML = `<button class="btn ghost sm" aria-label="Close">✕</button><b>Since your last visit</b> <span class="muted">(${fmtShort(prev)})</span><br>` +
+      `${list.length} problem${list.length === 1 ? '' : 's'}${open ? `, ${open} still active` : ', all resolved'} on ${new Set(list.map(a => a.target_id)).size} target${new Set(list.map(a => a.target_id)).size === 1 ? '' : 's'}. ` +
+      '<a href="#/history">View history</a>';
+    box.onclick = e => { if (e.target.closest('button,a')) box.remove(); };
+    document.body.appendChild(box);
+  } catch(e){}
+}
 async function refresh(first){
   try {
     const d = await api('api/tree');
     S.data = d; index();
+    if (first) sinceLastVisit(d);
+    if (d.logged_in) store.set('ps_last_visit', d.now);  // while the dashboard is open, this is "the last visit"
+    const types = new Set(d.targets.map(t => t.probe));
+    if (S.ptype && !types.has(S.ptype)){ S.ptype = ''; store.set('ps_ptype', ''); $('#ptype').value = ''; }
+    $('#ptype').classList.toggle('hidden', types.size < 2);  // only useful with more than one probe type
     const theme = d.site.theme || 'modern';
     if (document.documentElement.dataset.theme !== theme){
       document.documentElement.dataset.theme = theme;
@@ -567,6 +599,8 @@ function bindRange(){
 }
 bindRange();
 seg('#fam', () => S.fam, v => { S.fam = v; store.set('ps_fam', v); route(); });
+$('#ptype').value = S.ptype;
+$('#ptype').onchange = e => { S.ptype = e.target.value; store.set('ps_ptype', S.ptype); route(); };
 let st;
 $('#search').addEventListener('input', e => {
   clearTimeout(st); st = setTimeout(() => {

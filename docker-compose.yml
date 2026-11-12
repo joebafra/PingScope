@@ -21,6 +21,7 @@ services:
       LETTERMINT_TOKEN: ${LETTERMINT_TOKEN:-}   # optional; can also be set in Admin → Settings → Notifications
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}   # optional; same
       PUSHOVER_TOKEN: ${PUSHOVER_TOKEN:-}   # optional; same
+      WEBHOOK_URL: ${WEBHOOK_URL:-}   # optional; same
       TZ: ${TZ:-Europe/Amsterdam}
 
   # Enabled with COMPOSE_PROFILES=https in .env.

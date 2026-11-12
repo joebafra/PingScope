@@ -18,6 +18,7 @@ header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px s
 .brand small{font-weight:400;color:var(--muted);font-size:12px;white-space:nowrap}
 #menuBtn{display:none}
 #search{width:220px}
+#ptype{width:auto;padding-right:28px}
 .layout{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:0}
 aside{border-right:1px solid var(--line);padding:12px 8px 24px;position:sticky;top:57px;height:calc(100vh - 57px);overflow:auto;background:var(--bg)}
 main{padding:18px 20px 40px;min-width:0}
@@ -182,6 +183,7 @@ details.mtr summary:hover .mt{color:var(--accent)}
   body.menu aside{transform:none}
   main{padding:14px 16px 32px}
   #search{width:100%;order:10}
+  #ptype{order:10}
   header .seg{order:11}
   header #scheme{order:0}
   header .seg button{padding:5px 8px;font-size:12px}
@@ -206,6 +208,7 @@ details.mtr summary:hover .mt{color:var(--accent)}
   <button class="btn ghost" id="menuBtn" aria-label="Menu">☰</button>
   <a class="brand" href="#/"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M5 20h5l3-9 4 14 3-9h7" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="siteTitle">PingScope</span><small id="status"></small></a>
   <input id="search" type="search" placeholder="Search targets…" autocomplete="off">
+  <select id="ptype" class="hidden" aria-label="Probe type"><option value="">All types</option><option value="ping">Ping</option><option value="dns">DNS</option><option value="tcp">TCP</option></select>
   <div class="seg" id="fam"><button data-v="all">All</button><button data-v="4">IPv4</button><button data-v="6">IPv6</button></div>
   <div class="seg" id="range"><button data-v="3h">3h</button><button data-v="1d">Day</button><button data-v="7d">Week</button><button data-v="30d">Month</button><button data-v="1y">Year</button></div>
   <div id="scheme"></div>

@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .db import on_hold
 from .resolver import dns_text
 
 log = logging.getLogger("pingscope")
@@ -139,6 +140,32 @@ def telegram_chats(s):
                 name += f" (@{c['username']})"
             out[c["id"]] = {"id": c["id"], "name": name.strip(), "type": c.get("type")}
     return list(out.values())
+
+
+def wh_url(s):
+    return os.environ.get("WEBHOOK_URL", "").strip() or str(s.get("webhook_url") or "").strip()
+
+
+def webhook_ready(s):
+    """None when webhook messages can be sent, otherwise the reason they can't."""
+    url = wh_url(s)
+    if not url:
+        return "no webhook URL"
+    if not re.match(r"https?://[^/\s]+", url):
+        return "the webhook URL must start with https:// or http://"
+    return None
+
+
+def send_webhook(s, payload):
+    req = urllib.request.Request(wh_url(s), data=json.dumps(payload).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "PingScope"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            r.read(1000)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"webhook answered HTTP {e.code}")
+    except (urllib.error.URLError, OSError) as e:
+        raise RuntimeError(f"webhook not reachable ({getattr(e, 'reason', e)})")
 
 
 def po_token(s):
@@ -305,23 +332,28 @@ class Alerter:
         live = set()
         for x in series:
             r = results.get(x.key)
-            if r is None or not r.sent:  # probe could not run locally: no verdict this round
+            if on_hold(x.target, ts):  # paused or in maintenance: no alerts, open ones end quietly
                 live.add(x.key)
-                continue
-            live.add(x.key)
-            cfg = (groups.get(x.target["group_id"]) or {}).get("alert_effective") or {}
-            if x.target.get("alert_skip"):
-                cfg = {}  # this target is excluded from alerts
-            # rounds in a row: the target's own setting, else its group's, else the global default
-            need = x.target.get("alert_rounds") or cfg.get("rounds") or s["alert_after_rounds"]
-            a = self.open.get(x.key)
-            if not cfg.get("on"):
-                for old in (a, self.dns_open.get(x.key)):
-                    if old:  # notifications were switched off: close quietly
+                for old in (self.open.get(x.key), self.dns_open.get(x.key)):
+                    if old:
                         self._close(old, ts)
                 self.track.pop(x.key, None)
                 self.dns_bad.pop(x.key, None)
                 continue
+            if r is None or not r.sent:  # probe could not run locally: no verdict this round
+                live.add(x.key)
+                continue
+            live.add(x.key)
+            eff = (groups.get(x.target["group_id"]) or {}).get("alert_effective") or {}
+            # Every problem is kept in the alert history. Messages only go out for groups with notifications on and
+            # targets that aren't skipped; the others use the history threshold (Settings → Notifications).
+            if eff.get("on") and not x.target.get("alert_skip"):
+                cfg = eff
+            else:
+                cfg = {"on": False, "down": True, "loss": s.get("history_loss") or None}
+            # rounds in a row: the target's own setting, else its group's, else the global default
+            need = x.target.get("alert_rounds") or cfg.get("rounds") or s["alert_after_rounds"]
+            a = self.open.get(x.key)
             self._check_dns(ts, x, cfg, need, s, events)
             loss = r.lost / r.sent * 100
             kind = None
@@ -376,8 +408,17 @@ class Alerter:
         self.store.prune_alerts(ts - 90 * 86400)
         if not s["alert_recovery"]:
             events = [e for e in events if e[0] != "resolved"]
-        return [e for e in events if e[3].get("email") or e[3].get("telegram") or e[3].get("pushover")
-                or target_chats(e[2].target, e[3])]
+        return [e for e in events if self._sends(e)]
+
+    @staticmethod
+    def _sends(e):
+        """Whether an event goes out: notifications are on, and for a follow-up (down, reminder, resolved) the start
+        of that alert was sent too (not one that was only recorded while notifications were off)."""
+        ev, a, x, cfg = e
+        if not cfg.get("on") or (ev != "start" and not a.get("emailed")):
+            return False
+        return bool(cfg.get("email") or cfg.get("telegram") or cfg.get("pushover") or cfg.get("webhook")
+                    or target_chats(x.target, cfg))
 
     def _check_dns(self, ts, x, cfg, need, s, events):
         """DNS alert: the hostname's lookup fails (record gone, timeout) for `need` measured rounds in a row. The last
@@ -415,13 +456,26 @@ class Alerter:
         mail_used = bool(token(s) or s.get("alert_email_from") or recipients(s))
         tg_used = bool(tg_token(s) or chat_list(s.get("telegram_chat_ids")))
         po_used = bool(po_token(s) or po_users(s))
+        wh_used = bool(wh_url(s))
         mail = [e for e in events if e[3].get("email")] if mail_used else []
         tg = [e for e in events if e[3].get("telegram")] if tg_used else []
         po = [e for e in events if e[3].get("pushover")] if po_used else []
+        wh = [e for e in events if e[3].get("webhook")] if wh_used else []
         unsent = [e for e in events if (e[3].get("email") or e[3].get("telegram") or e[3].get("pushover"))
-                  and e not in mail and e not in tg and e not in po]
-        if unsent and not mail and not tg and not po:
-            errors.append(f"{len(unsent)} alert(s) not sent: set up Telegram, Pushover or email in Settings → Notifications")
+                  and e not in mail and e not in tg and e not in po and e not in wh]
+        if unsent and not mail and not tg and not po and not wh:
+            errors.append(f"{len(unsent)} alert(s) not sent: set up Telegram, Pushover, email or a webhook in "
+                          "Settings → Notifications")
+        if wh:
+            why = webhook_ready(s)
+            if why:
+                errors.append(f"{len(wh)} alert(s) not sent to the webhook: {why}")
+            else:
+                try:
+                    await asyncio.to_thread(send_webhook, s, self.compose_webhook(ts, wh, s))
+                    sent_any = True
+                except RuntimeError as e:
+                    errors.append(f"Webhook alert failed at {when}: {e}")
         if po:
             why = pushover_ready(s)
             if why:
@@ -479,7 +533,7 @@ class Alerter:
             self.last_sent = ts
             for _, a, _, _ in events:
                 self.store.update_alert(a["id"], emailed=1, last_email=ts)
-                a["last_email"] = ts
+                a["last_email"], a["emailed"] = ts, 1
 
     async def test_alert(self, s, x, chats=None):
         """Send a sample alert for series x, marked as a test. chats=None: the admin channels (Telegram defaults
@@ -502,6 +556,12 @@ class Alerter:
                     errors += failed
                 except RuntimeError as e:
                     errors.append(str(e))
+            if webhook_ready(s) is None:
+                try:
+                    await asyncio.to_thread(send_webhook, s, self.compose_webhook(ts, ev, s, test=True))
+                    sent.append("webhook")
+                except RuntimeError as e:
+                    errors.append(str(e))
             if email_ready(s) is None:
                 subject, text, body = self.compose(ts, ev, s)
                 try:
@@ -520,8 +580,8 @@ class Alerter:
             except RuntimeError as e:
                 errors.append(str(e))
         if not sent and not errors:
-            errors.append("Nothing to send to: set up Telegram (bot token + chat ID), Pushover or email in "
-                          "Settings → Notifications")
+            errors.append("Nothing to send to: set up Telegram (bot token + chat ID), Pushover, email or a webhook "
+                          "in Settings → Notifications")
         return {"sent": sent, "errors": errors}
 
     def _rows(self, ts, events):
@@ -598,6 +658,28 @@ class Alerter:
         if len(rows) > MAX_LINES:
             lines.append(f"\n… and {len(rows) - MAX_LINES} more.")
         return "\n".join(lines)
+
+    def compose_webhook(self, ts, events, s, test=False):
+        """Webhook body in the chosen format: generic JSON, Slack-style {"text"} or Discord-style {"content"}."""
+        rows = self._rows(ts, events)
+        subject = ("[TEST] " if test else "") + self.compose(ts, events, s)[0]
+        lines = [subject] + [f"{r['status']}: {r['name']} ({r['fam']}, {r['addr']}) — {r['what']}"
+                             + (f" {r['link']}" if r["link"] else "") for r in rows[:MAX_LINES]]
+        if len(rows) > MAX_LINES:
+            lines.append(f"… and {len(rows) - MAX_LINES} more.")
+        text = "\n".join(lines)
+        fmt = s.get("webhook_format") or "json"
+        if fmt == "slack":
+            return {"text": text}
+        if fmt == "discord":
+            return {"content": text[:1990], "username": (s.get("site_title") or "PingScope")[:80]}
+        status = {"start": "problem", "down": "down", "reminder": "reminder", "resolved": "resolved"}
+        return {"source": "pingscope", "test": test, "site": s.get("site_title") or "PingScope", "time": ts,
+                "time_iso": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(ts)), "title": subject, "text": text,
+                "dashboard": base_url() or None,
+                "events": [{"status": status[r["ev"]], "label": r["status"], "target": r["name"], "group": r["group"],
+                            "family": r["fam"], "address": r["addr"], "message": r["what"], "link": r["link"] or None}
+                           for r in rows]}
 
     def compose_pushover(self, ts, events, s):
         """(title, HTML message, priority) for Pushover: the Telegram text without its header line; resolved-only

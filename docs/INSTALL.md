@@ -8,7 +8,7 @@ This guide installs PingScope on a Linux server with its own hostname (for examp
 2. [Get the code](#2-get-the-code)
 3. [Install with Docker (recommended)](#3-install-with-docker-recommended)
 4. [HTTPS / SSL certificate (Let's Encrypt)](#4-https--ssl-certificate-lets-encrypt)
-   - [Notifications: Telegram, Pushover and email](#4a-notifications-telegram-pushover-and-email)
+   - [Notifications: Telegram, Pushover, email and webhooks](#4a-notifications-telegram-pushover-email-and-webhooks)
 5. [Updating, backups and useful commands](#5-updating-backups-and-useful-commands)
 6. [Install without Docker](#6-install-without-docker)
 7. [Using another reverse proxy](#7-using-another-reverse-proxy)
@@ -288,7 +288,7 @@ Run the installer and leave the hostname empty. PingScope then listens on `http:
 
 ---
 
-## 4a. Notifications: Telegram, Pushover and email
+## 4a. Notifications: Telegram, Pushover, email and webhooks
 
 PingScope can alert you when targets have packet loss or are down, by **Telegram**, **[Pushover](https://pushover.net)** and/or **email** (via [Lettermint](https://lettermint.co)). Set up one or more.
 
@@ -311,6 +311,13 @@ PingScope can alert you when targets have packet loss or are down, by **Telegram
 
 Problems arrive with normal priority and a link to the graphs (when `PINGSCOPE_DOMAIN` is set); messages that only say something is fine again arrive quietly.
 
+### Webhook
+
+1. **Admin → Settings → Notifications:** paste the *Webhook URL* and choose the *Webhook format*: *JSON* (generic, with all fields: status, target, group, family, address, message, link), *Slack* (a `text` field; also Mattermost, Rocket.Chat and Google Chat) or *Discord* (a `content` field). Save.
+2. **Admin → Alerts → Send test alert** posts a message marked TEST and shows the HTTP error if the webhook refuses it.
+
+Each group has a *Send to the webhook* switch (on by default). The *Remove* box next to the saved URL clears it.
+
 ### Email (Lettermint)
 
 1. **In Lettermint:** add and verify your sending domain (for example `example.nl`), then create a **Project API token** in the project settings.
@@ -331,7 +338,7 @@ While you edit the group, a **preview** shows how many targets would have alerte
 
 All alerts that start or end in the same measurement round are combined into one message, so a large outage sends one message instead of hundreds. Active alerts and the history of the last 90 days are listed under **Admin → Alerts**.
 
-Instead of entering the tokens in the admin panel you can put `TELEGRAM_BOT_TOKEN=...`, `PUSHOVER_TOKEN=...` and/or `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so messages contain links to the graphs.
+Instead of entering the tokens in the admin panel you can put `TELEGRAM_BOT_TOKEN=...`, `PUSHOVER_TOKEN=...`, `WEBHOOK_URL=...` and/or `LETTERMINT_TOKEN=...` in `.env` and run `docker compose up -d`. Set `PINGSCOPE_DOMAIN` so messages contain links to the graphs.
 
 ## 5. Updating, backups and useful commands
 

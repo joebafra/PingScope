@@ -104,11 +104,35 @@ function groupOptions(selected, {exclude, top} = {}){
   walk(null, 0);
   return html;
 }
+// Pause (not measured) or maintenance (measured, no alerts), see on_hold() in db.py
+const holdOf = t => t.hold && (t.hold_until == null || t.hold_until > Date.now() / 1000) ? t.hold : null;
+const holdText = t => `${holdOf(t) === 'pause' ? 'Paused' : 'Maintenance'} ${t.hold_until ? 'until ' + fmtShort(t.hold_until) : 'until resumed'}`;
+const HOLD_CHOICES = [[1, '1 hour'], [4, '4 hours'], [24, '1 day'], [null, 'until resumed']];
+function holdMenu(anchor, ids, current){
+  document.querySelector('.hmenu')?.remove();
+  const m = document.createElement('div'); m.className = 'hmenu';
+  const opt = (mode, h, label) => `<button class="btn ghost sm" data-mode="${mode}" data-h="${h ?? ''}">${label}</button>`;
+  m.innerHTML = `<div class="small muted">Pause: not measured, no alerts</div><div class="hrow">${HOLD_CHOICES.map(([h, l]) => opt('pause', h, l)).join('')}</div>
+    <div class="small muted">Maintenance: measured, no alerts</div><div class="hrow">${HOLD_CHOICES.map(([h, l]) => opt('maintenance', h, l)).join('')}</div>` +
+    (current ? `<div class="hrow">${opt('', null, '<b>Resume now</b>')}</div>` : '');
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.top = `${r.bottom + scrollY + 4}px`;
+  m.style.left = `${Math.max(8, Math.min(r.right + scrollX - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`;
+  m.onclick = e => {
+    const b = e.target.closest('[data-mode]'); if (!b) return;
+    m.remove();
+    bulk('hold', ids, {mode: b.dataset.mode, hours: b.dataset.h ? +b.dataset.h : null});
+  };
+  setTimeout(() => document.addEventListener('click', function off(e){ if (!m.contains(e.target)){ m.remove(); document.removeEventListener('click', off); } }), 0);
+}
 function seriesHTML(t){
   const xs = A.data.series[t.id] || [];
   if (!t.enabled) return '<span class="faint small">disabled</span>';
-  if (!xs.length) return '<span class="faint small">waiting</span>';
-  return xs.map(s => {
+  const chip = holdOf(t) ? `<span class="holdchip ${holdOf(t)}">${esc(holdText(t))}</span>` : '';
+  if (holdOf(t) === 'pause') return chip;  // not measured: older values would be misleading
+  if (!xs.length) return chip + '<span class="faint small">waiting</span>';
+  return chip + xs.map(s => {
     const st = status(s);
     const v = s.error && !s.address ? 'unresolved' : !s.last ? 'waiting' : s.last.loss >= 100 ? 'down' : fmtMs(s.last.median) + (s.last.loss > 0 ? ' · ' + fmtLoss(s.last.loss) : '');
     return `<span class="st" title="${esc(s.address || s.error || '')}"><span class="dot ${st}"></span>IPv${s.family} · ${v}${PS.dnsBadge(s)}</span>`;
@@ -248,7 +272,7 @@ function renderTargetsPane(){
         <td class="hide-sm mono small wrap">${esc(t.host)}${t.port && t.probe !== 'ping' ? `<span class="faint">:${t.port}</span>` : ''}</td>
         <td class="hide-sm hide-md mono small wrap v6">${t.families === 'ipv4' ? '<span class="faint">off</span>' : t.host_v6 ? esc(t.host_v6) : (A.data.series[t.id] || []).some(x => x.family === 6) ? '<span class="faint">via AAAA</span>' : t.host && !/^[\d.]+$/.test(t.host) ? '<span class="faint">no AAAA</span>' : '<span class="faint">—</span>'}</td>
         <td>${seriesHTML(t)}</td>
-        <td class="acts">${!showGroup && g?.sort_mode !== 'name' ? `<button class="btn ghost up" title="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn ghost down" title="Move down" ${i < ts.length - 1 ? '' : 'disabled'}>↓</button>` : ''}<button class="btn sm tedit">Edit</button></td></tr>`).join('')
+        <td class="acts">${!showGroup && g?.sort_mode !== 'name' ? `<button class="btn ghost up" title="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn ghost down" title="Move down" ${i < ts.length - 1 ? '' : 'disabled'}>↓</button>` : ''}<button class="btn sm ghost thold" title="Pause or maintenance">${holdOf(t) ? 'Resume…' : 'Pause…'}</button><button class="btn sm tedit">Edit</button></td></tr>`).join('')
       : `<tr><td colspan="8" class="empty">${A.q ? 'No targets match.' : g ? 'No targets in this group yet.' : 'No targets yet.'}</td></tr>`) +
     '</tbody></table></div><p class="muted small">Tip: drag targets onto a group to move them.</p>';
   renderBulk();
@@ -269,6 +293,7 @@ function renderTargetsPane(){
     const t = A.data.targets.find(x => x.id === +tr.dataset.t);
     if (e.target.classList.contains('sel')){ e.target.checked ? A.sel.add(t.id) : A.sel.delete(t.id); renderBulk(); return; }
     if (e.target.closest('.tedit')){ e.preventDefault(); openTarget(t); return; }
+    if (e.target.closest('.thold')){ e.stopPropagation(); holdMenu(e.target.closest('.thold'), [t.id], holdOf(t)); return; }
     const mv = e.target.closest('.up,.down');
     if (mv){
       const ids = ts.map(x => x.id), i = ids.indexOf(t.id), j = i + (mv.classList.contains('up') ? -1 : 1);
@@ -288,12 +313,14 @@ function renderBulk(){
   box.innerHTML = `<div class="bulk"><b>${A.sel.size} selected</b>
     <select id="bulkGroup"><option value="">Move to group…</option>${groupOptions(null)}</select>
     <button class="btn sm" data-a="enable">Enable</button><button class="btn sm" data-a="disable">Disable</button>
+    <button class="btn sm" data-a="hold">Pause…</button>
     <button class="btn sm" data-a="alerts_off">${PS.icon('bell-off')} No alerts</button><button class="btn sm" data-a="alerts_on">${PS.icon('bell')} Alerts on</button>
     <button class="btn sm danger" data-a="delete">Delete</button><button class="btn sm ghost" data-a="clear">Clear selection</button></div>`;
   $('#bulkGroup').onchange = e => e.target.value && bulk('move', [...A.sel], {group_id: +e.target.value});
   box.onclick = e => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
     if (a === 'clear'){ A.sel.clear(); renderTargetsPane(); return; }
+    if (a === 'hold'){ e.stopPropagation(); holdMenu(e.target.closest('[data-a]'), [...A.sel], [...A.sel].some(id => holdOf(A.data.targets.find(t => t.id === id) || {}))); return; }
     if (a === 'delete' && !confirm(`Delete ${A.sel.size} target(s) and their measurement history?`)) return;
     bulk(a, [...A.sel]);
   };
@@ -301,7 +328,8 @@ function renderBulk(){
 async function bulk(action, ids, extra = {}){
   try {
     await api('api/admin/targets/bulk', {method: 'POST', body: {action, ids, ...extra}});
-    toast({move: 'Moved', enable: 'Enabled', disable: 'Disabled', delete: 'Deleted', alerts_off: 'Alerts off for', alerts_on: 'Alerts on for'}[action] + ` ${ids.length} target(s)`);
+    toast(action === 'hold' ? `${!extra.mode ? 'Resumed' : extra.mode === 'pause' ? 'Paused' : 'Maintenance for'} ${ids.length} target(s)${extra.mode ? (extra.hours ? ` for ${HOLD_CHOICES.find(c => c[0] === extra.hours)?.[1] || extra.hours + ' hours'}` : ' until resumed') : ''}`
+      : {move: 'Moved', enable: 'Enabled', disable: 'Disabled', delete: 'Deleted', alerts_off: 'Alerts off for', alerts_on: 'Alerts on for'}[action] + ` ${ids.length} target(s)`);
     if (action === 'delete' || action === 'move') A.sel.clear();
     await load(); renderTree(); renderTargetsPane();
   } catch(e){ toast(e.message, true); }
@@ -321,12 +349,14 @@ function openTarget(t, gid){
   for (const k of ['name', 'probe', 'host', 'host_v6', 'families', 'dns_query', 'dns_type', 'note']) tform[k].value = p[k] ?? '';
   tform.port.value = p.port ?? ''; tform.count.value = p.count ?? '';
   for (const k of ['spacing_ms', 'timeout_ms', 'packet_size']) tform[k].value = p[k] ?? '';
+  tform.dns_tries.innerHTML = `<option value="">Setting (${A.data.settings.dns_tries})</option>` + [1, 2, 3].map(n => `<option value="${n}">${n}</option>`).join('');
+  tform.dns_tries.value = p.dns_tries ?? '';
   const offOpts = A.data.settings_schema.find(x => x.key === 'start_offset')?.options || [];
   const offLabel = v => (offOpts.find(o => o[0] === v) || [, v])[1];
   tform.start_offset.innerHTML = `<option value="">Same as Settings (${esc(offLabel(A.data.settings.start_offset).toLowerCase())})</option>` +
     offOpts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
   tform.start_offset.value = p.start_offset || '';
-  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'start_offset', 'measure_every'].some(k => p[k] != null && p[k] !== '');
+  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'dns_tries', 'start_offset', 'measure_every'].some(k => p[k] != null && p[k] !== '');
   tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
   tform.hide_address.checked = !!p.hide_address;
   const addrHelp = () => {
@@ -376,6 +406,8 @@ function probeChanged(){
   tform.timeout_ms.placeholder = `default: ${st.timeout_ms}`;
   tform.packet_size.placeholder = `default: ${st.ping_size}`;
   $('#sizeField').classList.toggle('hidden', pr.name !== 'ping');
+  $('#triesField').classList.toggle('hidden', pr.name !== 'dns');
+  $('#triesHelp').classList.toggle('hidden', pr.name !== 'dns');
   probeSummary();
 }
 // one line with the settings this target is measured with, e.g. "20 × 56 bytes, 1000 ms apart, timeout 1500 ms, together"
@@ -385,7 +417,7 @@ function probeSummary(){
   const off = tform.start_offset.value || st.start_offset;
   const every = +tform.measure_every.value || A.groupMap.get(+tform.group_id.value)?.measure_every_effective || 1;
   $('#probeOptsSum').textContent = `· ${n}${pr === 'ping' ? ` × ${num('packet_size') || st.ping_size} bytes` : ` ${pr === 'dns' ? 'queries' : 'connects'}`}, ` +
-    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms, ${off === 'random' ? 'spread' : 'together'}, every ${everyLabel(every)}`;
+    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms${pr === 'dns' && (+num('dns_tries') || st.dns_tries) > 1 ? ` × ${+num('dns_tries') || st.dns_tries} attempts` : ''}, ${off === 'random' ? 'spread' : 'together'}, every ${everyLabel(every)}`;
 }
 tform.probe.onchange = probeChanged;
 $('#probeOpts').addEventListener('input', probeSummary);
@@ -481,6 +513,7 @@ function openGroup(g, parentId){
   gform.alert_email.checked = g ? g.alert_email : true;
   gform.alert_telegram.checked = g ? g.alert_telegram : true;
   gform.alert_pushover.checked = g ? g.alert_pushover : true;
+  gform.alert_webhook.checked = g ? g.alert_webhook : true;
   const parentChats = A.groupMap.get(g ? g.parent_id : parentId)?.alert_effective?.chats || [];
   chatPicker('#gTgPick', gform.alert_chat_ids, g?.alert_chat_ids, parentChats);
   $('#gTgTest').onclick = async () => {
@@ -528,7 +561,7 @@ gform.addEventListener('submit', async e => {
                 sort_mode: gform.sort_mode.value, sort_subgroups: gform.sort_subgroups.checked, hidden: gform.hidden.checked,
                 show_addresses: gform.show_addresses.checked, measure_every: gform.measure_every.value,
                 alert_mode: gform.alert_mode.value, alert_loss: gform.alert_loss.value, alert_down: gform.alert_down.checked,
-                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_pushover: gform.alert_pushover.checked, alert_rounds: gform.alert_rounds.value,
+                alert_email: gform.alert_email.checked, alert_telegram: gform.alert_telegram.checked, alert_pushover: gform.alert_pushover.checked, alert_webhook: gform.alert_webhook.checked, alert_rounds: gform.alert_rounds.value,
                 alert_chat_ids: pickedChats('#gTgPick', gform.alert_chat_ids)};
   try {
     if (gEditing) await api(`api/admin/groups/${gEditing.id}`, {method: 'PUT', body});
@@ -765,7 +798,8 @@ function viewSettings(){
         : `<label class="field" data-f="${x.key}"><span>${esc(x.label)}</span>` +
           (x.options ? `<select name="${x.key}">${x.options.map(([v, l]) => `<option value="${v}" ${s[x.key] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
             : x.key === 'site_remark' ? `<textarea name="${x.key}" rows="2" style="font-family:inherit;font-size:14px">${esc(s[x.key])}</textarea>`
-            : x.type === 'secret' ? `<input name="${x.key}" type="password" autocomplete="new-password" placeholder="${s[x.key + '_set'] ? '•••••••• saved, leave empty to keep' : 'not set'}">`
+            : x.type === 'secret' ? `<div class="row"><input name="${x.key}" type="password" autocomplete="new-password" placeholder="${s[x.key + '_set'] ? '•••••••• saved, leave empty to keep' : 'not set'}">` +
+              (s[x.key + '_set'] ? `<label class="check small" style="margin:0;white-space:nowrap"><input type="checkbox" name="${x.key}_clear"> Remove</label>` : '') + '</div>'
             : `<input name="${x.key}" ${x.type === 'int' ? `type="number" min="${x.min ?? ''}" max="${x.max ?? ''}"` : ''} value="${esc(s[x.key])}">`) +
           (x.help ? `<div class="help">${esc(x.help)}</div>` : '') + '</label>').join('') + '</div>').join('')}
     <div class="row"><button class="btn primary">Save settings</button></div></form></div>`;
@@ -777,6 +811,7 @@ function viewSettings(){
       const el = e.target[x.key];
       body[x.key] = x.type === 'bool' ? el.checked
         : x.type === 'multi' ? [...e.target.querySelectorAll(`input[name="${x.key}"]:checked`)].map(i => i.value).join(',') : el.value;
+      if (x.type === 'secret' && e.target[x.key + '_clear']?.checked) body[x.key + '_clear'] = true;
     }
     try {
       const r = await api('api/admin/settings', {method: 'PUT', body});
@@ -786,6 +821,7 @@ function viewSettings(){
       $('#siteTitle').textContent = r.settings.site_title;
       for (const x of sch) if (x.type === 'secret'){ const el = e.target[x.key]; el.value = ''; el.placeholder = r.settings[x.key + '_set'] ? '•••••••• saved, leave empty to keep' : 'not set'; }
       toast('Settings saved');
+      if (Object.keys(body).some(k => k.endsWith('_clear'))) viewSettings();  // a secret was removed
     } catch(err){ toast(err.message, true); }
   };
 }
@@ -819,7 +855,7 @@ function alertSummary(g, plain){
   const parts = [];
   if (e.loss) parts.push(`loss ≥ ${e.loss}%`);
   if (e.down) parts.push('down');
-  const ch = [e.telegram && 'Telegram', e.pushover && 'Pushover', e.email && 'email'].filter(Boolean);
+  const ch = [e.telegram && 'Telegram', e.pushover && 'Pushover', e.email && 'email', e.webhook && 'webhook'].filter(Boolean);
   return `${plain ? '' : PS.icon('bell') + ' '}alerts on ${parts.join(' or ')} after ${e.rounds || A.data.settings.alert_after_rounds} rounds, ${ch.length ? 'via ' + ch.join(' + ') : 'not sent'}`;
 }
 const fmtDur = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
@@ -837,6 +873,7 @@ async function viewAlerts(){
       <p class="muted small" style="margin:6px 0 10px">Alerts are set per group: open a group under <a href="#targets">Targets</a> → Edit group → Notifications. ${r.groups_on ? `${r.groups_on} group(s) have notifications on.` : '<b>No group has notifications on yet.</b>'} Telegram and email settings are under <a href="#settings">Settings</a> → Notifications.</p>
       <div class="small" style="margin:0 0 10px">Telegram: ${r.telegram_problem ? `<span class="muted">not set up (${esc(r.telegram_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
         Pushover: ${r.pushover_problem ? `<span class="muted">not set up (${esc(r.pushover_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
+        Webhook: ${r.webhook_problem ? `<span class="muted">not set up (${esc(r.webhook_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'} ·
         Email: ${r.email_problem ? `<span class="muted">not set up (${esc(r.email_problem)})</span>` : '<b style="color:var(--ok)">ready</b>'}
         ${r.target_chats || r.group_chats ? ` · own chat IDs on ${[r.group_chats && `${r.group_chats} group(s)`, r.target_chats && `${r.target_chats} target(s)`].filter(Boolean).join(' and ')}` : ''}</div>
       ${r.last_error ? `<div class="warnbox">${esc(r.last_error)}</div>` : ''}
