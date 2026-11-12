@@ -25,6 +25,37 @@ LETTERMINT_URL = os.environ.get("LETTERMINT_API_URL", "https://api.lettermint.co
 PUSHOVER_URL = os.environ.get("PUSHOVER_API_URL", "https://api.pushover.net/1/messages.json")
 TELEGRAM_API = os.environ.get("TELEGRAM_API_URL", "https://api.telegram.org")
 MAX_LINES = 60  # targets listed per message; the rest is summarised
+PROBE_SHORT = {"ping": "ping", "dns": "DNS query", "tcp": "TCP"}
+
+
+def _rank(ev, kind, loss):
+    """How bad an alert line is, to pick one when a host has several (see _merge)."""
+    if ev == "resolved":
+        return loss or 0
+    base = 3000 if kind == "down" else 2000 if kind == "loss" else 1500
+    return base + (loss or 0) - (1000 if ev == "reminder" else 0)
+
+
+def _merge(rows):
+    """One line per host per message. A host that is measured twice, such as a ping target and a DNS target for the
+    same name server, or the same host in two groups, would otherwise give near-identical lines (in a contact's chat
+    without group names, they look like a duplicate). The worst state is shown; with different probes, all of them."""
+    keys, by = [], {}
+    for r in rows:
+        k = (r["name"], r["fam"], r["addr"], r["ev"] == "resolved")
+        if k not in by:
+            keys.append(k)
+        by.setdefault(k, []).append(r)
+    out = []
+    for k in keys:
+        rs = sorted(by[k], key=lambda r: -r["rank"])
+        r = dict(rs[0])
+        if len(rs) > 1:
+            if len({x["probe"] for x in rs}) > 1:
+                r["what"] += " · " + ", ".join(dict.fromkeys(x["short"] for x in rs))
+            r["group"] = ", ".join(dict.fromkeys(x["group"] for x in rs if x["group"]))
+        out.append(r)
+    return out
 
 
 def chat_list(v):
@@ -506,7 +537,8 @@ class Alerter:
         public = self.store.settings()["public_dashboard"]
         label = {"start": "Problem", "down": "Down", "reminder": "Still a problem", "resolved": "Resolved"}
         order = {"down": 0, "start": 1, "reminder": 2, "resolved": 3}
-        events = sorted(events, key=lambda e: (order[e[0]], path(e[2].target["group_id"]), e[2].target["name"]))
+        shown = lambda e: "down" if e[0] == "start" and e[1]["kind"] == "down" else e[0]  # a new outage is listed first
+        events = sorted(events, key=lambda e: (order[shown(e)], path(e[2].target["group_id"]), e[2].target["name"]))
         rows = []
         for ev, a, x, cfg in events:
             if a["kind"] == "dns":
@@ -524,11 +556,15 @@ class Alerter:
             g = groups.get(x.target["group_id"]) or {}
             if ev == "start" and a["kind"] == "down":
                 ev = "down"
+            probe = PROBE_SHORT.get(x.target["probe"], x.target["probe"])
+            loss = a["peak_loss"] if ev == "resolved" else a["last_loss"]
             rows.append({"ev": ev, "status": label[ev], "name": x.target["name"], "group": path(x.target["group_id"]),
                          "fam": f"IPv{x.family}", "addr": x.address or x.target.get("host") or "", "what": what,
                          "link": f"{base_url()}#/t/{x.target_id}" if base_url() else "",
-                         "public_link": public and not g.get("hidden_effective")})
-        return rows
+                         "public_link": public and not g.get("hidden_effective"),
+                         "probe": probe, "rank": _rank(ev, a["kind"], loss),
+                         "short": f"{probe} {'DNS lookup' if a['kind'] == 'dns' else 'down' if a['kind'] == 'down' else f'{loss or 0:.0f}%'}"})
+        return _merge(rows)
 
     @staticmethod
     def _dns_what(ev, a, x, ts):
