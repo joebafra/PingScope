@@ -67,6 +67,12 @@ label.field .errmsg,div.field .errmsg{color:var(--bad);font-size:12px;margin-top
 .seg button.on{background:var(--accent);color:var(--accent-fg)}
 .seg svg{width:15px;height:15px;display:block}
 .seg.icons button{padding:6px 8px;display:inline-flex;align-items:center}
+/* DNS problem of a hostname target: still measured on its last known address */
+.dnsw{display:inline-block;margin-left:4px;padding:0 5px;border-radius:4px;font-size:10px;font-weight:700;line-height:16px;
+  letter-spacing:.03em;color:#fff;background:#7c3aed;vertical-align:1px;cursor:help}
+.dnswarn{margin:6px 0 2px;padding:6px 10px;border-radius:6px;font-size:12px;line-height:1.45;color:var(--fg);
+  background:rgba(124,58,237,.10);border-left:3px solid #7c3aed}
+.hkind.dns,.akind.dns{background:#7c3aed}
 /* small monochrome icons (PS.icon) */
 .ico{width:13px;height:13px;vertical-align:-2px;color:var(--faint);flex:none;display:inline-block}
 .btn .ico,.nav a.on .ico{color:inherit}

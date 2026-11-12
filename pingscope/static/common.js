@@ -347,6 +347,15 @@ const PS = (() => {
     paint();
   }
 
+  // A DNS problem of a hostname target (series.dns, see resolver.py): the last known address is measured for 24 hours.
+  function dnsText(d, down){
+    const n = d.name ? ` for ${d.name}` : '';
+    const what = d.problem === 'no_record' ? `no ${d.rr} record${n} anymore` : d.problem === 'timeout' ? `lookup timed out${n}` : `DNS server failure${n}`;
+    return `DNS: ${what}, since ${fmtShort(d.since)}. ` +
+      (down ? 'Shown as down after 24 hours.' : `Measuring the last known address until ${fmtShort(d.until)}, then it is shown as down.`);
+  }
+  const dnsBadge = s => s && s.dns ? ` <span class="dnsw" title="${esc(dnsText(s.dns, s.unresolved))}">DNS</span>` : '';
+
   // Small monochrome line icons, in the text colour (instead of emoji, which look different on every system)
   const ICONS = {
     lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -404,5 +413,5 @@ const PS = (() => {
   }
 
   return {$, $$, esc, store, api, sortTargets, classicStats, toast, fmtMs, fmtLoss, fmtDT, fmtShort, ago, lossColor, status, worst, probeBadge,
-          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone, icon, setIcons};
+          med, draw, chartStats, hookChart, legendHTML, LOCALE, schemeSwitch, applyScheme, copyBtn, fmtTime, setTimeZone, icon, setIcons, dnsText, dnsBadge};
 })();

@@ -17,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .resolver import dns_text
+
 log = logging.getLogger("pingscope")
 
 LETTERMINT_URL = os.environ.get("LETTERMINT_API_URL", "https://api.lettermint.co/v1/send")
@@ -251,13 +253,17 @@ class Alerter:
         self.store = store
         self.track = {}        # series key -> {"bad": n, "good": n, "worst": kind, "peak": loss}
         self.open = {}         # series key -> alert row (dict)
+        self.dns_open = {}     # series key -> open DNS alert (a series can have a DNS and a loss/down alert at once)
+        self.dns_bad = {}      # series key -> measured rounds in a row with a DNS problem
         self.last_error = None
         self.last_sent = None
         self._loaded = False
 
     def _load(self):
         if not self._loaded:  # alerts that were open before a restart stay open: no duplicate emails
-            self.open = {a["series"]: a for a in self.store.open_alerts()}
+            rows = self.store.open_alerts()
+            self.open = {a["series"]: a for a in rows if a["kind"] != "dns"}
+            self.dns_open = {a["series"]: a for a in rows if a["kind"] == "dns"}
             self._loaded = True
 
     def check(self, ts, series, results, s):
@@ -279,10 +285,13 @@ class Alerter:
             need = x.target.get("alert_rounds") or cfg.get("rounds") or s["alert_after_rounds"]
             a = self.open.get(x.key)
             if not cfg.get("on"):
-                if a:  # notifications were switched off: close quietly
-                    self._close(a, ts)
+                for old in (a, self.dns_open.get(x.key)):
+                    if old:  # notifications were switched off: close quietly
+                        self._close(old, ts)
                 self.track.pop(x.key, None)
+                self.dns_bad.pop(x.key, None)
                 continue
+            self._check_dns(ts, x, cfg, need, s, events)
             loss = r.lost / r.sent * 100
             kind = None
             if r.lost == r.sent and cfg.get("down"):
@@ -326,22 +335,45 @@ class Alerter:
                      "emailed": 0, "last_email": None}
                 self.open[x.key] = a
                 events.append(("start", a, x, cfg))
-        for key, a in list(self.open.items()):  # target deleted or disabled
+        for key, a in [*self.open.items(), *self.dns_open.items()]:  # target deleted or disabled
             if key not in live:
                 self._close(a, ts)
-        for key in list(self.track):
-            if key not in live:
-                del self.track[key]
+        for d in (self.track, self.dns_bad):
+            for key in list(d):
+                if key not in live:
+                    del d[key]
         self.store.prune_alerts(ts - 90 * 86400)
         if not s["alert_recovery"]:
             events = [e for e in events if e[0] != "resolved"]
         return [e for e in events if e[3].get("email") or e[3].get("telegram") or e[3].get("pushover")
                 or target_chats(e[2].target, e[3])]
 
+    def _check_dns(self, ts, x, cfg, need, s, events):
+        """DNS alert: the hostname's lookup fails (record gone, timeout) for `need` measured rounds in a row. The last
+        known address is measured meanwhile (resolver.py); after 24 hours the series is down and gets a down alert."""
+        d = self.dns_open.get(x.key)
+        if not x.dns:
+            self.dns_bad.pop(x.key, None)
+            if d:
+                self._close(d, ts)
+                events.append(("resolved", d, x, cfg))
+            return
+        n = self.dns_bad[x.key] = self.dns_bad.get(x.key, 0) + 1
+        if d:
+            if s["alert_reminder_hours"] and ts - (d.get("last_email") or d["started"]) >= s["alert_reminder_hours"] * 3600:
+                events.append(("reminder", d, x, cfg))
+        elif n >= need:
+            started = min(int(x.dns["since"]), ts)
+            aid = self.store.create_alert(x.key, x.target_id, x.family, "dns", started, None)
+            d = {"id": aid, "series": x.key, "target_id": x.target_id, "family": x.family, "kind": "dns",
+                 "started": started, "ended": None, "peak_loss": None, "last_loss": None, "emailed": 0, "last_email": None}
+            self.dns_open[x.key] = d
+            events.append(("start", d, x, cfg))
+
     def _close(self, a, ts):
         a["ended"] = ts
         self.store.update_alert(a["id"], ended=ts)
-        self.open.pop(a["series"], None)
+        (self.dns_open if a["kind"] == "dns" else self.open).pop(a["series"], None)
 
     async def notify(self, ts, events, s):
         if not events:
@@ -477,13 +509,18 @@ class Alerter:
         events = sorted(events, key=lambda e: (order[e[0]], path(e[2].target["group_id"]), e[2].target["name"]))
         rows = []
         for ev, a, x, cfg in events:
-            what = "down (no replies)" if a["kind"] == "down" else f"packet loss {a['last_loss']:.0f}%"
-            if ev == "resolved":
+            if a["kind"] == "dns":
+                what = self._dns_what(ev, a, x, ts)
+            elif ev == "resolved":
                 what = f"fine again after {fmt_dur(ts - a['started'])} (worst: {a['peak_loss']:.0f}% loss)"
-            elif ev == "reminder":
-                what += f", for {fmt_dur(ts - a['started'])}"
-            elif a["kind"] == "loss" and cfg.get("loss"):
-                what += f" (threshold {cfg.get('loss')}%)"
+            else:
+                what = "down (no replies)" if a["kind"] == "down" else f"packet loss {a['last_loss']:.0f}%"
+                if a["kind"] == "down" and x.address is None and x.error:
+                    what = f"down: {x.error}"  # not measured: its hostname doesn't resolve (resolver.py)
+                if ev == "reminder":
+                    what += f", for {fmt_dur(ts - a['started'])}"
+                elif a["kind"] == "loss" and cfg.get("loss"):
+                    what += f" (threshold {cfg.get('loss')}%)"
             g = groups.get(x.target["group_id"]) or {}
             if ev == "start" and a["kind"] == "down":
                 ev = "down"
@@ -492,6 +529,20 @@ class Alerter:
                          "link": f"{base_url()}#/t/{x.target_id}" if base_url() else "",
                          "public_link": public and not g.get("hidden_effective")})
         return rows
+
+    @staticmethod
+    def _dns_what(ev, a, x, ts):
+        if ev == "resolved" or not x.dns:
+            return f"DNS works again after {fmt_dur(ts - a['started'])}"
+        what = ("DNS: " if x.dns["problem"] == "no_record" else "") + dns_text(x.dns)
+        if ev == "reminder":
+            what += f", for {fmt_dur(ts - a['started'])}"
+        if x.address:
+            until = time.strftime("%d-%m %H:%M", time.localtime(x.dns["until"]))
+            what += f"; still measuring the last known address until {until}, then it is shown as down"
+        else:
+            what += "; shown as down"
+        return what
 
     def compose_telegram(self, ts, events, s, external=False):
         """Telegram HTML message. external=True (a target's own chat): no group names, only public links."""

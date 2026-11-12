@@ -86,6 +86,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Per-target probe settings:** a target can have its own probes per round, spacing, timeout and packet size (*Edit target → Probe settings*), like a separate probe definition in SmokePing.
 - **Interval per group or target:** measure some targets less often, e.g. a gateway every minute and a website every 5 minutes (*Measure every* in the group dialog or under *Probe settings*, in whole rounds). Graphs and alerts follow each target's own rounds.
 - **Together or spread:** all targets start at the beginning of each round, or each target gets its own fixed random moment in the round (like SmokePing's `offset = random`), so not everything is sent at once. Set it for all targets and override it per target.
+- **DNS problems don't look like outages:** when the A/AAAA lookup of a hostname target fails (the record is gone, or the DNS server times out or fails), PingScope keeps measuring the **last known address for 24 hours**. The target stays up as long as it answers, with a purple **DNS** badge and an explanation on the graph, and a **DNS alert** is sent. After 24 hours without a working lookup the target is shown as **down** (with a down alert). The last known address is kept in the database, so a restart during a DNS problem doesn't matter. A target whose IPv6 was removed on purpose: set it to *IPv4 only*.
 - **Honest data:** when a probe can't run locally (fping missing, no IPv6 on the server, out of processes), the round is left as a gap instead of being recorded as 100% packet loss, and the error is shown in the admin panel.
 - **"Test now"** in the target dialog runs the probe immediately and shows the result, before you save.
 
@@ -132,7 +133,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 
 ### Alerts: Telegram, Pushover and email
 
-- Notifications are set **per group** (subgroups can follow their parent): alert at a **packet-loss threshold** (for example 10% or more), when a target is **down** (no replies at all), or both.
+- Notifications are set **per group** (subgroups can follow their parent): alert at a **packet-loss threshold** (for example 10% or more), when a target is **down** (no replies at all), or both. Hostname targets also get a **DNS alert** when their lookup fails for *N* rounds (see *DNS problems* under [Measurements](#measurements)), and a message when DNS works again.
 - Delivery by **Telegram** (your own bot), **[Pushover](https://pushover.net)** and/or **email** via [Lettermint](https://lettermint.co). Each can be switched on per group.
 - **No alert storms:** a problem must last *N* rounds in a row before an alert starts (default 3), and *N* good rounds before it counts as resolved. *N* can be set per group and overridden per target (1 for a critical link, 5 for a flaky one).
 - Everything that starts, gets worse or ends in the **same round goes out in one message**, so a large outage sends one message instead of hundreds.
@@ -283,7 +284,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Probe timeout | 1500 ms | 100–10000 | A probe without a reply within this time counts as lost. |
 | Ping packet size | 56 bytes | 12–1452 | ICMP data bytes per ping, like SmokePing's `packetsize`. |
 | When targets are measured | Together | | *Together* at the start of each round, or *Spread* over the round (each target its own fixed random moment, like `offset = random`). |
-| Hostname re-resolve interval | 300 s | 60–86400 | How often A/AAAA records of hostname targets are looked up again. |
+| Hostname re-resolve interval | 300 s | 60–86400 | How often A/AAAA records of hostname targets are looked up again. While a lookup fails it is retried every round. |
 
 **Storage**
 

@@ -44,6 +44,7 @@ const kids = gid => S.kids.get(gid) || [];
 const famSeries = (t, f) => t.series.find(s => s.family === f);
 const visibleFams = () => S.fam === 'all' ? [4, 6] : [+S.fam];
 const tStatus = t => worst(t.series.filter(s => S.fam === 'all' || s.family === +S.fam).map(status));
+const isProblem = t => ['loss', 'down'].includes(tStatus(t)) || t.series.some(s => s.dns);  // DNS: still measured, but a problem
 function gPath(gid){ const out = []; while (gid && S.groups.has(gid)){ const g = S.groups.get(gid); out.unshift(g); gid = g.parent_id; } return out; }
 const pathText = gid => gPath(gid).map(g => g.name).join(' › ');
 function matches(t){
@@ -54,10 +55,10 @@ function matches(t){
 
 function valHTML(s){
   if (!s) return '<span class="val none">—</span>';
-  if (s.unresolved) return `<span class="val down" title="${esc(s.error || '')}"><span class="dot down"></span>${s.error ? 'unresolved' : 'down'}</span>`;
-  if (!s.last) return '<span class="val none"><span class="dot"></span>waiting</span>';
-  if (s.last.loss >= 100) return '<span class="val down"><span class="dot down"></span>down</span>';
-  return `<span class="val"><span class="dot ${status(s)}"></span>${fmtMs(s.last.median)}${s.last.loss > 0 ? ` <span class="l">· ${fmtLoss(s.last.loss)}<span class="hide-sm"> loss</span></span>` : ''}</span>`;
+  if (s.unresolved) return `<span class="val down" title="${esc(s.error || (s.dns ? PS.dnsText(s.dns, true) : ''))}"><span class="dot down"></span>${s.error || s.dns ? 'unresolved' : 'down'}</span>`;
+  if (!s.last) return `<span class="val none"><span class="dot"></span>waiting${PS.dnsBadge(s)}</span>`;
+  if (s.last.loss >= 100) return `<span class="val down"><span class="dot down"></span>down${PS.dnsBadge(s)}</span>`;
+  return `<span class="val"><span class="dot ${status(s)}"></span>${fmtMs(s.last.median)}${s.last.loss > 0 ? ` <span class="l">· ${fmtLoss(s.last.loss)}<span class="hide-sm"> loss</span></span>` : ''}${PS.dnsBadge(s)}</span>`;
 }
 
 // ---------- navigation ----------
@@ -65,7 +66,7 @@ function renderNav(){
   const r = currentRoute();
   const sel = r.view === 'group' ? r.id : r.view === 'target' ? S.targets.get(r.id)?.group_id : null;
   const ancestors = new Set(sel ? gPath(sel).map(g => g.id) : []);
-  const problems = S.data.targets.filter(t => ['loss', 'down'].includes(tStatus(t))).length;
+  const problems = S.data.targets.filter(isProblem).length;
   const node = g => {
     const ch = kids(g.id), open = S.expanded.has(g.id) || ancestors.has(g.id);
     const st = worst(g._all.flatMap(t => t.series.filter(s => S.fam === 'all' || s.family === +S.fam).map(status)));
@@ -197,7 +198,7 @@ function fillOverview(problemsOnly){
     `<div class="tile"><b style="color:var(--bad)">${cnt('down')}</b><span>down or unresolved</span></div>` +
     `<div class="tile"><b>${all.length ? Math.round(with6 / all.length * 100) : 0}%</b><span>IPv6 coverage · ${with6} of ${all.length}</span><div class="bar"><i style="width:${all.length ? with6 / all.length * 100 : 0}%"></i></div></div>`;
   let rows = (S.ordered || all).filter(matches);
-  if (problemsOnly) rows = rows.filter(t => ['loss', 'down'].includes(tStatus(t)));
+  if (problemsOnly) rows = rows.filter(isProblem);
   const rank = {down: 3, loss: 2, unknown: 1, ok: 0};
   const maxLoss = t => Math.max(0, ...t.series.map(s => s.error ? 100 : s.last?.loss ?? 0));
   if (S.sort === 'problems' || problemsOnly) rows.sort((a, b) => rank[tStatus(b)] - rank[tStatus(a)] || maxLoss(b) - maxLoss(a));
@@ -225,7 +226,7 @@ async function viewHistory(){
   const days = store.get('ps_hdays', 7), seq = ++histSeq;
   if (!$('#hbody')){
     main.innerHTML = `<h1>Alert history</h1>
-      <div class="muted">Packet loss and outages that triggered an alert, for groups with notifications on.</div>
+      <div class="muted">Packet loss, outages and DNS problems that triggered an alert, for groups with notifications on.</div>
       <div class="toolbar" style="margin-top:14px"><div class="seg" id="hdays">${[[1, '24 hours'], [7, '7 days'], [30, '30 days'], [90, '90 days']].map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div><span class="muted small" id="hcount"></span></div>
       <div class="tiles" id="htiles"></div><div id="hbody"><div class="empty">Loading…</div></div>`;
     seg('#hdays', () => String(store.get('ps_hdays', 7)), v => { store.set('ps_hdays', +v); viewHistory(); });
@@ -243,12 +244,12 @@ async function viewHistory(){
     `<div class="tile"><b>${new Set(rows.map(a => a.target_id)).size}</b><span>targets affected</span></div>` +
     `<div class="tile"><b style="color:var(--bad)">${rows.filter(a => a.kind === 'down').length}</b><span>outages (down)</span></div>` +
     `<div class="tile"><b>${done.length ? fmtDur(dur / done.length) : '–'}</b><span>average duration</span></div>`;
-  const kind = a => a.kind === 'down' ? 'down' : 'packet loss';
+  const kind = a => a.kind === 'down' ? 'down' : a.kind === 'dns' ? 'DNS' : 'packet loss';
   const row = a => `<tr>
       <td><span class="hkind ${a.ended ? 'ok' : a.kind}">${a.ended ? 'resolved' : kind(a)}</span>${a.ended ? `<div class="faint small">was ${kind(a)}</div>` : ''}</td>
       <td><a href="#/t/${a.target_id}"><b>${esc(a.name)}</b></a> <span class="badge">IPv${a.family}</span><div class="muted small">${esc(a.group)}</div></td>
       <td class="small" style="white-space:nowrap">${a.ended && dayLabel(a.started) !== dayLabel(a.ended) ? fmtShort(a.started) : hhmm(a.started)} → ${a.ended ? (dayLabel(a.started) !== dayLabel(a.ended) ? fmtShort(a.ended) : hhmm(a.ended)) : '<b>now</b>'}<div class="muted">${fmtDur((a.ended || r.now) - a.started)}</div></td>
-      <td class="small">worst ${a.peak_loss == null ? '–' : a.peak_loss.toFixed(0) + '%'}${!a.ended && a.last_loss != null ? `<div class="muted">now ${a.last_loss.toFixed(0)}%</div>` : ''}</td></tr>`;
+      <td class="small">${a.kind === 'dns' ? '<span class="muted">lookup failed</span>' : `worst ${a.peak_loss == null ? '–' : a.peak_loss.toFixed(0) + '%'}${!a.ended && a.last_loss != null ? `<div class="muted">now ${a.last_loss.toFixed(0)}%</div>` : ''}`}</td></tr>`;
   const table = list => `<div class="tblwrap"><table class="tbl htbl"><thead><tr><th>Status</th><th>Target</th><th>Time</th><th>Loss</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table></div>`;
   let html = open.length ? `<h3>Active now</h3>${table(open)}` : '';
   const byDay = new Map();
@@ -338,7 +339,7 @@ function famBox(t, f, range, big, onPick){
   }
   box.innerHTML = `<div class="clabel"><span class="badge">IPv${f}</span>${s.address ? `<span class="addr">${esc(s.address)}</span>${PS.copyBtn(s.address)}` : ''}` +
     `<span class="now" data-now="${s.key}">${valHTML(s)}</span></div>` +
-    (s.error ? `<div class="err">${esc(s.error)}</div>` : '');
+    (s.error ? `<div class="err">${esc(s.error)}</div>` : s.dns ? `<div class="dnswarn">${esc(PS.dnsText(s.dns, s.unresolved))}</div>` : '');
   const title = document.createElement('div'); title.className = 'ctitle';
   title.textContent = `${RANGES[range]} · IPv${f} · ${t.name}`;
   box.appendChild(title);
@@ -372,8 +373,8 @@ function viewTarget(tid){
     (S.data.can_edit ? `<a class="btn sm" href="admin#edit=${t.id}" style="margin-left:auto">Edit</a>` : '') + '</div>' +
     (t.host !== undefined ? `<div class="info">` +
       (t.host ? `<span>Host <b>${esc(t.host)}</b>${PS.copyBtn(t.host)}</span>` : '') +
-      (s4 ? `<span>IPv4 <b>${esc(s4.address || 'unresolved')}</b>${PS.copyBtn(s4.address)}</span>` : '') +
-      (s6 ? `<span>IPv6 <b>${esc(s6.address || 'unresolved')}</b>${PS.copyBtn(s6.address)}</span>` : '') +
+      (s4 ? `<span>IPv4 <b>${esc(s4.address || 'unresolved')}</b>${s4.dns && s4.address ? ' <span class="faint">(last known)</span>' : ''}${PS.copyBtn(s4.address)}</span>` : '') +
+      (s6 ? `<span>IPv6 <b>${esc(s6.address || 'unresolved')}</b>${s6.dns && s6.address ? ' <span class="faint">(last known)</span>' : ''}${PS.copyBtn(s6.address)}</span>` : '') +
       (t.port && t.probe !== 'ping' ? `<span>Port <b>${t.port}</b></span>` : '') + '</div>'
       : `<div class="info"><span>Measured over ${t.series.map(s => 'IPv' + s.family).join(' and ') || '–'}</span></div>`) +
     `<div id="ranges"></div>` +

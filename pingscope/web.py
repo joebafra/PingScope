@@ -264,15 +264,18 @@ VISITOR_GROUP_FIELDS = ("id", "parent_id", "name", "sort", "sort_mode")
 
 
 def _series_json(x, private=True, address=False):
+    # DNS problem of a hostname target (resolver.py); visitors get it without the hostname
+    dns = x.dns and {k: x.dns[k] for k in (("problem", "since", "until", "rr", "name") if private
+                                            else ("problem", "since", "until", "rr"))}
     if not private:  # visitors: no hostnames, addresses or error texts that contain them
         out = {"key": x.key, "family": x.family, "unresolved": x.address is None,
-               "mtr": bool(x.path), "last": collector.latest.get(x.key)}
+               "mtr": bool(x.path), "last": collector.latest.get(x.key), "dns": dns}
         if address:  # the target's group shows addresses to visitors
             out["address"] = x.address
         return out
     return {"key": x.key, "family": x.family, "address": x.address, "error": x.error, "via": x.via,
             "unresolved": x.address is None, "mtr": bool(x.path), "path": x.path,
-            "last": collector.latest.get(x.key)}
+            "last": collector.latest.get(x.key), "dns": dns}
 
 
 def _shows_address(t, groups):

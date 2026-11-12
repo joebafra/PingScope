@@ -2,6 +2,18 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.021 — 2026-11-12
+
+### Fixed
+
+- **A DNS hiccup no longer shows as an outage.** When the lookup of a hostname target failed once (a timeout or a server failure of the DNS server PingScope uses), its address was forgotten and the round was recorded as 100% packet loss. Thanks to the users who analysed this.
+
+### Changed
+
+- **DNS problems of hostname targets:** when the A/AAAA lookup fails (the record is gone, or the DNS server times out or fails), the **last known address is measured for 24 hours**. The target stays up as long as it answers, shows a purple **DNS** badge and an explanation on its graphs ("DNS: lookup timed out, since 08:22. Measuring the last known address until …"), counts as a problem on the dashboard, and gets a **DNS alert** after the usual number of rounds, with a message when DNS works again. After 24 hours without a working lookup it is shown as **down**, with a down alert. A failing lookup is retried every round.
+- The last known address and an ongoing DNS problem are kept in the database, so a restart during a DNS problem keeps measuring.
+- Alert history: DNS alerts have their own label; down alerts of a hostname that doesn't resolve say why.
+
 ## 0.020 — 2026-11-11 · [6347f36](https://github.com/joebafra/PingScope/commit/6347f36)
 
 ### Added

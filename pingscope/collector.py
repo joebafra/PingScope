@@ -17,7 +17,7 @@ log = logging.getLogger("pingscope")
 class Collector:
     def __init__(self, store):
         self.store = store
-        self.resolver = Resolver()
+        self.resolver = Resolver(store)  # remembers the last good address of hostnames across restarts
         self.mtr = MtrScheduler(store)
         self.alerter = Alerter(store)
         self._mail_task = None

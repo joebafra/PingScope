@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS alerts(
   emailed INTEGER NOT NULL DEFAULT 0, last_email INTEGER);
 CREATE INDEX IF NOT EXISTS alerts_open ON alerts(ended);
 CREATE INDEX IF NOT EXISTS alerts_started ON alerts(started);
+CREATE TABLE IF NOT EXISTS dns_state(
+  name TEXT NOT NULL, family INTEGER NOT NULL, address TEXT, problem TEXT, since REAL, PRIMARY KEY(name, family));
 CREATE TABLE IF NOT EXISTS telegram_contacts(
   id INTEGER PRIMARY KEY, chat_id TEXT NOT NULL UNIQUE, label TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0);
 """
@@ -177,6 +179,22 @@ class Store:
     def meta(self, k, default=None):
         r = self._one("SELECT v FROM meta WHERE k=?", (k,))
         return r[0] if r else default
+
+    # ---- DNS state of hostname targets (resolver.py): last good address and an ongoing problem ----
+
+    def dns_states(self):
+        return {(r["name"], r["family"]): (r["address"], r["problem"], r["since"])
+                for r in self._q("SELECT * FROM dns_state")}
+
+    def save_dns_state(self, name, family, address, problem, since):
+        with self.lock, self.c:
+            self.c.execute("INSERT OR REPLACE INTO dns_state VALUES (?,?,?,?,?)", (name, family, address, problem, since))
+
+    def forget_dns_states(self, names):
+        gone = [r[0] for r in self._q("SELECT DISTINCT name FROM dns_state") if r[0] not in names]
+        if gone:
+            with self.lock, self.c:
+                self.c.executemany("DELETE FROM dns_state WHERE name=?", [(n,) for n in gone])
 
     def set_meta_if_missing(self, k, v):
         with self.lock, self.c:
