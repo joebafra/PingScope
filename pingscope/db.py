@@ -649,14 +649,17 @@ class Store:
                                [(k, ts, s, l, pack(sorted(r))) for k, s, l, r in rows])
 
     def recent_loss(self, since):
-        """Packet loss (%) per series since `since`, for sorting the dashboard by the worst targets."""
+        """Packet loss (%) per series since `since`, for sorting the dashboard by the worst targets.
+        INDEXED BY: without it SQLite scans the whole table in primary-key order for the GROUP BY (all retained
+        rounds, under the store lock), instead of only the rows since `since`."""
         return {r[0]: round(r[2] / r[1] * 100, 2) for r in
-                self._q("SELECT series, SUM(sent), SUM(lost) FROM samples WHERE ts>=? GROUP BY series", (since,)) if r[1]}
+                self._q("SELECT series, SUM(sent), SUM(lost) FROM samples INDEXED BY samples_ts WHERE ts>=? "
+                        "GROUP BY series", (since,)) if r[1]}
 
     def latest_all(self, since):
         rows = self._q(
             "SELECT s.series, s.ts, s.sent, s.lost, s.rtts FROM samples s "
-            "JOIN (SELECT series, MAX(ts) m FROM samples WHERE ts>=? GROUP BY series) x "
+            "JOIN (SELECT series, MAX(ts) m FROM samples INDEXED BY samples_ts WHERE ts>=? GROUP BY series) x "
             "ON s.series=x.series AND s.ts=x.m", (since,))
         return {r["series"]: summary(r["ts"], r["sent"], r["lost"], unpack(r["rtts"])) for r in rows}
 

@@ -2,6 +2,12 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.024 — 2026-11-13
+
+### Fixed
+
+- **The dashboard loaded slower since 0.023.** The packet loss of the last hour (for *Worst first*) was computed every round with a query that read all stored measurements instead of only the last hour, while holding the database lock, so pages and graphs had to wait. It now uses the time index: on 14 days of data (3 million rounds) 8 ms instead of 227 ms with everything in memory, and much more on a server where the database doesn't fit in memory. The same fix speeds up loading the last values at startup.
+
 ## 0.023 — 2026-11-12 · [c9fd3d2](https://github.com/joebafra/PingScope/commit/c9fd3d2)
 
 ### Added
