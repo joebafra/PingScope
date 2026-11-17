@@ -4,6 +4,11 @@
 #   sudo ./deploy.sh            update if GitHub has new commits (used by the timer)
 #   sudo ./deploy.sh --force    rebuild and restart even if nothing changed
 #   sudo ./deploy.sh --status   show current and available version
+#   sudo ./deploy.sh --setup    enable the "Update now" button in Admin → Settings → Updates, and exit
+#
+# The admin panel and this script talk through two files in PingScope's data directory: the panel writes
+# update-request (a systemd path unit, pingscope-update.path, then starts this script right away), and this
+# script writes deploy-status.json (last check, result, newest version) and last-deploy.json for the panel.
 #
 # Steps: fetch → (nothing new? stop) → database backup → pull → rebuild/restart
 #        → health check → on failure: roll back to the previous version.
@@ -29,26 +34,76 @@ cd "$DIR"
 export GIT_TERMINAL_PROMPT=0
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 
+APPDATA=""; MODE=""; NEW=""; REQUESTED=false
 log() { echo "$(date '+%F %T') $*"; }
-die() { log "ERROR: $*"; exit 1; }
+die() { log "ERROR: $*"; write_status error "$*"; exit 1; }
+
+version_of() {  # __version__ in a commit
+  git show "$1:pingscope/__init__.py" 2>/dev/null | sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' | head -1
+}
+
+# Status for Admin → Settings → Updates (result: up-to-date, updated, failed, skipped, error, ready)
+write_status() {
+  [ -n "$APPDATA" ] && [ -d "$APPDATA" ] || return 0
+  local button=false auto=false msg=${2:-}
+  systemctl is-active --quiet pingscope-update.path 2>/dev/null && button=true
+  systemctl is-enabled --quiet pingscope-deploy.timer 2>/dev/null && auto=true
+  msg=${msg//\\/\/}; msg=${msg//\"/\'}
+  printf '{"checked": %s, "result": "%s", "message": "%s", "available_version": "%s", "available_commit": "%s", "requested": %s, "button": %s, "auto": %s, "mode": "%s"}\n' \
+    "$(date +%s)" "$1" "$msg" "$( [ -n "$NEW" ] && version_of "$NEW")" "${NEW:0:7}" "$REQUESTED" "$button" "$auto" "$MODE" \
+    > "$APPDATA/deploy-status.json.tmp" && mv "$APPDATA/deploy-status.json.tmp" "$APPDATA/deploy-status.json"
+}
+
+# The "Update now" button: a path unit that starts the update service when the admin panel writes update-request.
+# Installed (and kept up to date) by this script itself, so existing installs get it with their next update.
+setup_button() {
+  [ -f /etc/systemd/system/pingscope-deploy.service ] || return 0   # no update service (installed by install.sh)
+  local unit=/etc/systemd/system/pingscope-update.path want
+  want=$(printf '[Unit]\nDescription=PingScope: start an update requested in the admin panel\n\n[Path]\nPathExists=%s\nUnit=pingscope-deploy.service\n\n[Install]\nWantedBy=paths.target' "$APPDATA/update-request")
+  if [ "$(cat "$unit" 2>/dev/null)" != "$want" ]; then
+    printf '%s\n' "$want" > "$unit"
+    systemctl daemon-reload
+    systemctl enable --now pingscope-update.path >/dev/null 2>&1 && log "update button in the admin panel enabled ($unit)"
+  fi
+  systemctl is-active --quiet pingscope-update.path || systemctl start pingscope-update.path >/dev/null 2>&1 || true
+}
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo ./deploy.sh)"
+
+if command -v docker >/dev/null 2>&1 && docker compose ps --services 2>/dev/null | grep -qx pingscope; then
+  MODE=docker
+  APPDATA="$DIR/data"
+elif systemctl list-unit-files pingscope.service >/dev/null 2>&1 && [ -d "$DIR/venv" ]; then
+  MODE=systemd
+  db=$(systemctl show pingscope -p Environment --value | tr ' ' '\n' | grep '^PINGSCOPE_DB=' | cut -d= -f2 || true)
+  APPDATA=$(dirname "${db:-/var/lib/pingscope/pingscope.db}")
+else
+  die "no running PingScope install found in $DIR (docker compose or systemd)"
+fi
+
+# An update requested with the button in the admin panel. Taken before the lock, so the path unit doesn't
+# start this again and again while another deploy runs.
+if [ -f "$APPDATA/update-request" ]; then
+  rm -f "$APPDATA/update-request"
+  REQUESTED=true
+  log "update requested in the admin panel"
+fi
 
 # Only one deploy at a time
 exec 9>/run/lock/pingscope-deploy.lock 2>/dev/null || exec 9>/tmp/pingscope-deploy.lock
 flock -n 9 || { log "another deploy is running; skipping"; exit 0; }
 
-if command -v docker >/dev/null 2>&1 && docker compose ps --services 2>/dev/null | grep -qx pingscope; then
-  MODE=docker
-elif systemctl list-unit-files pingscope.service >/dev/null 2>&1 && [ -d "$DIR/venv" ]; then
-  MODE=systemd
-else
-  die "no running PingScope install found in $DIR (docker compose or systemd)"
-fi
+setup_button
 
 git fetch --quiet origin "$BRANCH" || die "git fetch failed (check access to GitHub; for a private fork over SSH: ssh -T git@github.com)"
 CUR=$(git rev-parse HEAD)
 NEW=$(git rev-parse "origin/$BRANCH")
+
+if [ "${1:-}" = "--setup" ]; then
+  write_status ready "update button ready"
+  log "update button ready (Admin → Settings → Updates)"
+  exit 0
+fi
 
 DEPLOYED_FILE="$DIR/data/.deployed-commit"
 DEPLOYED=$(cat "$DEPLOYED_FILE" 2>/dev/null || true)
@@ -66,6 +121,8 @@ fi
 if [ "$CUR" = "$NEW" ] && [ "${1:-}" != "--force" ]; then
   # Code is current. But if someone ran `git pull` by hand, the running version may be older: rebuild then.
   if [ "$DEPLOYED" = "$CUR" ]; then
+    write_status up-to-date ""
+    [ "$REQUESTED" = true ] && log "already up to date (${CUR:0:7})"
     exit 0   # nothing to do (silent, the timer runs this every few minutes)
   fi
   if [ -z "$DEPLOYED" ]; then
@@ -76,6 +133,7 @@ if [ "$CUR" = "$NEW" ] && [ "${1:-}" != "--force" ]; then
 fi
 FAILED_FILE="$DIR/data/.deploy-failed"
 if [ "${1:-}" != "--force" ] && [ -f "$FAILED_FILE" ] && [ "$(cat "$FAILED_FILE")" = "$NEW" ]; then
+  write_status skipped "version ${NEW:0:7} failed to start before; waiting for a newer version (or run sudo ./deploy.sh --force)"
   exit 0   # this version failed before; wait for a newer commit (or run with --force)
 fi
 
@@ -93,7 +151,8 @@ else
   sudo -u pingscope env PINGSCOPE_DB="${db:-/var/lib/pingscope/pingscope.db}" "$DIR/venv/bin/python" -m pingscope backup "/var/lib/pingscope/$(basename "$backup")" >/dev/null 2>&1 \
     && log "database backup: /var/lib/pingscope/$(basename "$backup")" || log "warning: database backup failed (continuing)"
 fi
-ls -1t data/backups/pre-deploy-*.db 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -f
+# (|| true: without any backup ls fails, and with pipefail that would end the deploy without a message)
+ls -1t data/backups/pre-deploy-*.db 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -f || true
 
 start() {
   if [ "$MODE" = docker ]; then
@@ -121,6 +180,9 @@ if start && healthy; then
   rm -f "$FAILED_FILE"
   echo "$NEW" > "$DEPLOYED_FILE"
   log "deploy OK: now running ${NEW:0:7}"
+  printf '{"at": %s, "from_commit": "%s", "from_version": "%s", "to_commit": "%s", "to_version": "%s"}\n' \
+    "$(date +%s)" "${CUR:0:7}" "$(version_of "$CUR")" "${NEW:0:7}" "$(version_of "$NEW")" > "$APPDATA/last-deploy.json" || true
+  write_status updated "now running ${NEW:0:7}"
   [ "$MODE" = docker ] && docker image prune -f >/dev/null 2>&1 || true
   exit 0
 fi

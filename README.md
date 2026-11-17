@@ -187,6 +187,7 @@ Afterwards, **Admin → IPv6** finds AAAA records for the targets that are still
 
 - **One installer** (`install.sh`) for Ubuntu and Debian: installs Docker, asks for your hostname and email, checks DNS and IPv6, opens the firewall, starts everything and prints a one-time setup code for the first admin.
 - **HTTPS out of the box:** [Caddy](https://caddyserver.com/) gets a Let's Encrypt certificate for your hostname, renews it, redirects HTTP to HTTPS and sends HSTS.
+- **Update from the admin panel:** *Settings → Updates* shows the running and newest version and the last update, with an **Update now** button that starts the server's update script (below) right away. The container itself gets no access to Docker or the server.
 - **Automatic updates:** a systemd timer checks GitHub every 5 minutes. A new version is installed with a **database backup first**, a health check afterwards, and an **automatic rollback** if it doesn't start.
 - Runs with **Docker Compose** (recommended) or as a plain **systemd** service, behind Caddy, nginx, Apache or any other reverse proxy.
 - A ready-made **Docker image** for amd64 and arm64 on [Docker Hub](https://hub.docker.com/r/joebafra/pingscope), built automatically from `main` and from every release.
@@ -269,6 +270,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Site title | `PingScope` | | Shown in the header and browser tab. |
 | Welcome text | | | Shown at the top of the overview page. |
 | Dashboard style | Modern | | *Modern* follows the visitor's light/dark preference; *Classic* is SmokePing-style. |
+| Check for new versions | on | | *Settings → Updates* looks up the newest version on GitHub, at most once an hour; nothing about your installation is sent. |
 | Show icons | on | | Small line icons next to labels (lock for hidden groups, bell for notifications, globe for groups that show IP addresses, magnifier when zoomed in). Off shows text only, such as "(hidden)". |
 | Periods | 3h, day, week, month, year | | Which of 1h, 3h, 6h, 12h, day, week, month and year are offered in the header and shown on a target page. |
 | Time zone of the times shown | Visitor | | *Visitor*: each browser's own time zone. *Server*: the server's `TZ` for everyone, like SmokePing. |

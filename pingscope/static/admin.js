@@ -792,6 +792,7 @@ function viewSettings(){
       fping: ${st.fping_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
       mtr: ${st.mtr_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
       dig: ${st.dig_available ? 'installed' : `<span class="muted">not installed${A.data.settings.dns_client === 'dig' ? ' — <b style="color:var(--bad)">needed for the DNS client setting</b>' : ' (only needed for the dig DNS client)'}</span>`}</p></div>
+    <div class="card pad" style="margin-bottom:16px" id="updCard"><h2>Updates</h2><p class="muted small" style="margin:6px 0 0">Checking…</p></div>
     <div class="card pad" style="margin-bottom:16px" id="httpsCard"><h2>HTTPS / SSL certificate</h2><p class="muted small" style="margin:6px 0 0">Checking…</p></div>
     <div id="swarn">${A.data.warnings.map(w => `<div class="warnbox">${esc(w)}</div>`).join('')}</div>
     <form id="sform">${sections.map(sec => `<div class="card pad settings-sec"><h3>${esc(sec)}</h3>` +
@@ -809,7 +810,7 @@ function viewSettings(){
             : `<input name="${x.key}" ${x.type === 'int' ? `type="number" min="${x.min ?? ''}" max="${x.max ?? ''}"` : ''} value="${esc(s[x.key])}">`) +
           (x.help ? `<div class="help">${esc(x.help)}</div>` : '') + '</label>').join('') + '</div>').join('')}
     <div class="row"><button class="btn primary">Save settings</button></div></form></div>`;
-  loadHttps();
+  loadHttps(); loadUpdates();
   $('#sform').onsubmit = async e => {
     e.preventDefault();
     const body = {};
@@ -830,6 +831,54 @@ function viewSettings(){
       if (Object.keys(body).some(k => k.endsWith('_clear'))) viewSettings();  // a secret was removed
     } catch(err){ toast(err.message, true); }
   };
+}
+
+// Admin → Settings → Updates. The server's update service (deploy.sh) does the update; see updates.py.
+async function loadUpdates(){
+  const box = $('#updCard'); if (!box) return;
+  let r;
+  try { r = await api('api/admin/updates'); }
+  catch(e){ box.innerHTML = `<h2>Updates</h2><p class="muted small" style="margin:6px 0 0">${esc(e.message)}</p>`; return; }
+  const d = r.deploy, last = r.last_deploy, lt = r.latest;
+  const CL = 'https://github.com/joebafra/PingScope/blob/main/CHANGELOG.md';
+  let html = `<h2>Updates</h2><p class="small" style="margin:6px 0">Running <b>${esc(r.version)}</b>${r.commit ? ` <span class="muted">(${esc(r.commit)})</span>` : ''} · ` +
+    (r.update_available ? `<b style="color:var(--accent)">version ${esc(lt.version)} is available</b> (<a href="${CL}" target="_blank" rel="noopener noreferrer">what's new</a>)`
+      : lt?.version ? '<span style="color:var(--ok)">up to date</span>'
+      : lt?.error ? `<span class="muted">couldn't check for a new version: ${esc(lt.error)}</span>`
+      : '<span class="muted">not checking for new versions (see the setting below)</span>') + '</p>';
+  if (d){
+    const bad = ['error', 'failed', 'skipped'].includes(d.result);
+    html += `<p class="muted small" style="margin:0 0 10px">${d.auto ? 'Automatic updates are on: checked every 5 minutes.' : 'Automatic updates are off.'} ` +
+      `Last check ${ago(d.checked)}${bad && d.message ? `: <b style="color:var(--bad)">${esc(d.message)}</b>` : ''}.` +
+      (last ? ` Last update ${fmtShort(last.at)}: ${esc(last.from_version || last.from_commit)} → ${esc(last.to_version || last.to_commit)}.` : '') + '</p>';
+  }
+  html += r.can_update
+    ? `<div class="row" style="align-items:center"><button class="btn primary" id="updNow" ${r.requested ? 'disabled' : ''}>${r.requested ? 'Update requested…' : 'Update now'}</button>` +
+      `<span class="muted small" id="updMsg">Makes a backup, installs the newest version and goes back if it doesn't start. PingScope is away for a moment.</span></div>`
+    : `<p class="muted small" style="margin:0">${d ? 'The update button isn\'t set up on this server yet: run <code>sudo ./deploy.sh --setup</code> in the PingScope directory.'
+      : 'This installation has no update service (it comes with <code>install.sh</code>). With the Docker Hub image: <code>docker compose pull &amp;&amp; docker compose up -d</code>, or automatically with Watchtower. From source: <code>git pull</code> and restart.'}</p>`;
+  box.innerHTML = html;
+  $('#updNow')?.addEventListener('click', requestUpdate);
+}
+async function requestUpdate(){
+  const btn = $('#updNow');
+  btn.disabled = true; btn.textContent = 'Update requested…';
+  try { await api('api/admin/updates', {method: 'POST'}); }
+  catch(e){ toast(e.message, true); btn.disabled = false; btn.textContent = 'Update now'; return; }
+  $('#updMsg').textContent = 'The server starts the update within a few seconds. This page reloads when the new version runs.';
+  const was = A.version, t0 = Date.now();
+  const poll = setInterval(async () => {
+    if (Date.now() - t0 > 10 * 60 * 1000){ clearInterval(poll); loadUpdates(); return; }
+    try {
+      const s = await api('api/session');
+      if (s.version + (s.commit ? ` (${s.commit})` : '') !== was){ clearInterval(poll); location.reload(); return; }
+      const u = await api('api/admin/updates');
+      if (!u.requested && u.deploy && u.deploy.checked * 1000 >= t0 - 5000 && u.deploy.result !== 'updated'){
+        clearInterval(poll); loadUpdates();
+        toast(u.deploy.result === 'up-to-date' ? 'PingScope is already up to date' : `Update: ${u.deploy.message || u.deploy.result}`, u.deploy.result !== 'up-to-date');
+      }
+    } catch(e){ /* restarting */ }
+  }, 4000);
 }
 
 async function loadHttps(){

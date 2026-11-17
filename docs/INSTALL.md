@@ -362,6 +362,7 @@ The public repository needs no login. For a private fork, the server must read i
 sudo ./deploy.sh --status                         # running version vs. available version
 sudo ./deploy.sh                                  # deploy now instead of waiting for the timer
 sudo ./deploy.sh --force                          # rebuild/restart even without changes, or retry a failed version
+sudo ./deploy.sh --setup                          # enable the "Update now" button in the admin panel
 sudo journalctl -u pingscope-deploy -n 50         # deploy log
 sudo systemctl list-timers pingscope-deploy.timer # when the next check runs
 ```
@@ -380,6 +381,14 @@ To turn it off:
 ```bash
 sudo systemctl disable --now pingscope-deploy.timer
 ```
+
+#### Updating from the admin panel
+
+**Admin → Settings → Updates** shows the running version, the newest version and the result of the last update, with an **Update now** button. The button doesn't update anything itself: it leaves a request in PingScope's data directory (`data/update-request`), and a small systemd path unit (`pingscope-update.path`) starts the same `deploy.sh` right away, with the backup, health check and rollback described above. So you don't have to wait for the next check, and it also works with automatic updates turned off. PingScope's container gets no access to Docker or the server.
+
+`deploy.sh` sets the path unit up by itself (existing installs get it with their next automatic update); `sudo ./deploy.sh --setup` does it right away, and the installer asks for it when you turn automatic updates off. `deploy.sh` writes its results to `data/deploy-status.json` and `data/last-deploy.json`, which the panel shows.
+
+Without the update service (the Docker Hub image with `docker run`, or your own compose file), the panel shows the newest version on GitHub and how to update by hand.
 
 You can also run `sudo ./install.sh` again. `deploy.sh` works the same way for the install without Docker ([section 6](#6-install-without-docker)).
 

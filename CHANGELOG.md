@@ -2,6 +2,22 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.026 — 2026-11-17
+
+### Added
+
+- **Updates in the admin panel** (*Admin → Settings → Updates*): the running version, the newest version (with a link to this changelog), the last check and the last update, and an **Update now** button. The button leaves a request in PingScope's data directory; a systemd path unit on the server then starts `deploy.sh` right away, with the usual backup, health check and rollback. The page reloads by itself when the new version runs. The container gets no access to Docker or the server.
+- `deploy.sh` writes its result to `data/deploy-status.json` and `data/last-deploy.json`, sets up the button (`pingscope-update.path`) by itself, and has `--setup` to do that right away. The installer asks for the button when automatic updates are turned off.
+- Without the update service (the Docker Hub image), the panel shows the newest version on GitHub and how to update. *Check for new versions* (on by default) turns that check off; nothing about the installation is sent.
+
+### Fixed
+
+- `deploy.sh` stopped without a message when no database backup existed yet (for example after a failed backup), instead of continuing the update.
+
+### Existing installations
+
+- With automatic updates on, the button is set up by itself with this update; *Settings → Updates* then shows it.
+
 ## 0.025 — 2026-11-17 · [9ed40bb](https://github.com/joebafra/PingScope/commit/9ed40bb)
 
 ### Added

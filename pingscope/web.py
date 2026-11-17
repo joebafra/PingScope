@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 
 from . import __commit__, __version__, alerts as alerts_mod, history as history_mod, importer, rdns, settings as settings_mod
+from . import updates as updates_mod
 from .collector import Collector, measure
 from .db import Store, measure_every, on_hold
 from .model import FAMILY_MODES, DNS_TYPES, ValidationError, clean_target, ip_version
@@ -799,6 +800,28 @@ def export(history: bool = False):
     data = importer.export(store)
     name = f"pingscope-export-{stamp}.json"
     return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+def _data_dir():
+    return os.path.dirname(os.path.abspath(DB_PATH))
+
+
+@admin.get("/updates")
+def updates_status():
+    """Admin → Settings → Updates: running and newest version, the last update, whether the button works."""
+    out = updates_mod.status(_data_dir(), __version__, store.settings()["update_check"])
+    return {**out, "version": __version__, "commit": __commit__}
+
+
+@admin.post("/updates")
+def updates_request(request: Request):
+    """Ask the server's update service (deploy.sh) to update now. It only starts the normal update: fetch the newest
+    version of the installation's own git checkout, with a backup, a health check and a rollback."""
+    if not updates_mod.status(_data_dir(), __version__, False)["can_update"]:
+        raise HTTPException(400, "This installation has no update service for the button. Run sudo ./deploy.sh --setup "
+                                 "on the server, or update by hand.")
+    updates_mod.request(_data_dir(), current_user(request)["username"])
+    return {"requested": True}
 
 
 @admin.get("/export/info")

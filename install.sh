@@ -131,11 +131,21 @@ if [[ "${a:-Y}" =~ ^[Yy]$ ]]; then
     cp deploy/pingscope-deploy.timer /etc/systemd/system/
     systemctl daemon-reload
     systemctl enable --now pingscope-deploy.timer >/dev/null 2>&1
+    ./deploy.sh --setup >/dev/null 2>&1 || true   # the "Update now" button in Admin → Settings → Updates
     ok "Automatic updates enabled (log: journalctl -u pingscope-deploy)"
   else
     warn "This server can't read the GitHub repository without a password prompt."
     warn "Clone the public repository over HTTPS (https://github.com/joebafra/PingScope.git), or set up"
     warn "an SSH deploy key for a private fork (docs/INSTALL.md, section 2.1), then run ./install.sh again."
+  fi
+else
+  systemctl disable --now pingscope-deploy.timer >/dev/null 2>&1 || true
+  read -rp "Allow starting updates with a button in the admin panel (Settings → Updates)? [Y/n] " a
+  if [[ "${a:-Y}" =~ ^[Yy]$ ]]; then
+    sed "s#/opt/pingscope#$PWD#g" deploy/pingscope-deploy.service > /etc/systemd/system/pingscope-deploy.service
+    systemctl daemon-reload
+    ./deploy.sh --setup >/dev/null 2>&1 && ok "Update button enabled: Admin → Settings → Updates" \
+      || warn "Could not set up the update button; run: sudo ./deploy.sh --setup"
   fi
 fi
 

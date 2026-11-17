@@ -120,6 +120,10 @@ SCHEMA = {
                        "Also send a message (Telegram and/or email) when a target is fine again.", None, None),
     "alert_reminder_hours": (0, int, "Notifications", "Reminder while still down (hours)",
                              "Send the alert again every this many hours while it lasts. 0 = never.", 0, 168),
+    "update_check": (True, bool, "Updates", "Check for new versions",
+                     "Look up the newest PingScope version on GitHub, at most once an hour while the admin panel shows "
+                     "it. Nothing about this installation is sent. Installations with the update service from "
+                     "install.sh use their own git checkout for this.", None, None),
 }
 
 SECRETS = {k for k, v in SCHEMA.items() if v[1] == "secret"}
