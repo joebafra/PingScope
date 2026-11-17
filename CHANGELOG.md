@@ -2,6 +2,13 @@
 
 All notable changes to PingScope, newest first. Versions are numbered 0.010, 0.011, 0.012 and so on. A release is a Git tag (`v0.011`) and a Docker image tag (`joebafra/pingscope:0.011`); `latest` always follows the `main` branch. The commit after the date is the one shown next to the version in the dashboard footer and under *Admin → Settings → Status*.
 
+## 0.025 — 2026-11-17
+
+### Added
+
+- **DNS client: built-in or dig.** *Settings → Measurements → DNS client*, and per target under *Probe settings*. *dig* runs dig for every query, exactly like SmokePing's DNS probe: `+tries` from *DNS attempts per query*, `+time` from the timeout (whole seconds), dig's "Query time", and a TCP retry when a UDP answer is truncated. The built-in client (default, unchanged) sends the queries itself over UDP, which needs no extra processes, and counts a truncated answer as an answer. Without dig installed, dig targets are skipped with a warning instead of counted as lost.
+- dig is included in the Docker image (`bind9-dnsutils`); *Settings → Status* shows whether it is installed.
+
 ## 0.024 — 2026-11-13 · [d0cc404](https://github.com/joebafra/PingScope/commit/d0cc404)
 
 ### Fixed

@@ -366,7 +366,7 @@ function probeLine(t){
   if (!t.pings) return '';
   const every = `every ${t.interval || S.data.interval} seconds`;
   return t.probe === 'ping' ? `${t.pings} ICMP Echo Pings (${t.size} Bytes) ${every}`
-    : t.probe === 'dns' ? `${t.pings} DNS Queries${t.tries > 1 ? ` (up to ${t.tries} attempts each)` : ''} ${every}`
+    : t.probe === 'dns' ? `${t.pings} DNS Queries${t.client === 'dig' || t.tries > 1 ? ` (${[t.client === 'dig' && 'dig', t.tries > 1 && `up to ${t.tries} attempts each`].filter(Boolean).join(', ')})` : ''} ${every}`
     : t.probe === 'tcp' ? `${t.pings} TCP Connects ${every}` : `${t.pings} probes ${every}`;
 }
 

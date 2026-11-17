@@ -372,7 +372,7 @@ def export(store, include_settings=True, refs=False):
     targets = store.targets()
     keep = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type", "port", "count",
             "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds", "hide_address",
-            "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every", "dns_tries")
+            "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every", "dns_tries", "dns_client")
 
     def walk(parent_id):
         out = []

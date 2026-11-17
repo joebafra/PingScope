@@ -1,11 +1,14 @@
 """DNS query response time (UDP), like SmokePing's DNS probe. Any valid reply counts, including NXDOMAIN."""
 import asyncio
+import math
 import os
+import re
+import shutil
 import socket
 import struct
 import time
 
-from .base import Probe, register, spaced, to_result
+from .base import PartialFailure, Probe, register, spaced, to_result
 
 QTYPES = {"A": 1, "NS": 2, "CNAME": 5, "SOA": 6, "PTR": 12, "MX": 15, "TXT": 16, "AAAA": 28}
 
@@ -62,6 +65,26 @@ async def query_once(address, family, port, qname, qtype, timeout_s, tries=1):
         transport.close()
 
 
+_QUERY_TIME = re.compile(r"Query time:\s+([0-9.]+)\s+msec")
+
+
+async def dig_once(address, family, port, qname, qtype, timeout_s, tries=1):
+    """One query with dig, like SmokePing's DNS probe: the "Query time" dig reports (of the answered attempt; after a
+    truncated UDP answer, of the TCP retry), or None without an answer."""
+    wait = max(1, math.ceil(timeout_s))  # dig's +time takes whole seconds
+    cmd = ["dig", f"-{family}", f"@{address}", "-p", str(port), qname, qtype, f"+tries={max(1, tries)}",
+           f"+time={wait}", "+noall", "+stats"]
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), wait * max(1, tries) + 5)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return None
+    m = _QUERY_TIME.search(out.decode(errors="replace"))
+    return float(m.group(1)) if m else None
+
+
 @register
 class DnsProbe(Probe):
     name = "dns"
@@ -74,11 +97,21 @@ class DnsProbe(Probe):
     def tries(self, series, s):
         return series.target.get("dns_tries") or s.get("dns_tries", 1)
 
+    def client(self, series, s):
+        """builtin (our own UDP queries) or dig (like SmokePing): the target's choice, else Settings → DNS client."""
+        return series.target.get("dns_client") or s.get("dns_client") or "builtin"
+
+    def dig_available(self):
+        return bool(shutil.which("dig"))
+
     def duration(self, series, s):
         return (self.count(series, s) * self.spacing_ms(series, s)
                 + self.timeout_ms(series, s) * self.tries(series, s)) / 1000
 
     async def run(self, series, s):
+        no_dig = [x for x in series if x.address and self.client(x, s) == "dig"] if not self.dig_available() else []
+        skip = {x.key for x in no_dig}
+
         async def measure(x):
             cnt = self.count(x, s)
             if not x.address:
@@ -89,8 +122,13 @@ class DnsProbe(Probe):
             port = t.get("port") or 53
             timeout = self.timeout_ms(x, s) / 1000
             tries = self.tries(x, s)
+            once = dig_once if self.client(x, s) == "dig" else query_once
             vals = await spaced(cnt, self.spacing_ms(x, s) / 1000,
-                                lambda: query_once(x.address, x.family, port, qname, qtype, timeout, tries))
+                                lambda: once(x.address, x.family, port, qname, qtype, timeout, tries))
             return x.key, to_result(vals)
 
-        return dict(await asyncio.gather(*[measure(x) for x in series]))
+        out = dict(await asyncio.gather(*[measure(x) for x in series if x.key not in skip]))
+        if no_dig:  # not measured: a gap instead of 100% loss
+            raise PartialFailure(out, f"dig is not installed (apt install bind9-dnsutils); {len(no_dig)} DNS series "
+                                      "set to use dig were not measured")
+        return out

@@ -329,6 +329,7 @@ def tree(request: Request, _=Depends(can_view)):
             item["size"] = t["packet_size"] or s["ping_size"]
         elif t["probe"] == "dns":
             item["tries"] = t["dns_tries"] or s["dns_tries"]  # attempts per query, like dig
+            item["client"] = t["dns_client"] or s["dns_client"]  # builtin or dig
         if addr:  # the DNS query name is never shown on the dashboard, only in the admin edit form
             item.update(host=t["host"], host_v6=t["host_v6"],
                         port=t["port"] if t["probe"] != "ping" else None)
@@ -493,7 +494,7 @@ def admin_data():
                     + ([collector.alerter.last_error] if collector.alerter.last_error else []),
         "status": {"last_run": collector.last_run, "duration": collector.last_duration,
                    "mtr_available": collector.mtr.available,
-                   "fping_available": PROBES["ping"].available()},
+                   "fping_available": PROBES["ping"].available(), "dig_available": PROBES["dns"].dig_available()},
     }
 
 

@@ -351,12 +351,16 @@ function openTarget(t, gid){
   for (const k of ['spacing_ms', 'timeout_ms', 'packet_size']) tform[k].value = p[k] ?? '';
   tform.dns_tries.innerHTML = `<option value="">Setting (${A.data.settings.dns_tries})</option>` + [1, 2, 3].map(n => `<option value="${n}">${n}</option>`).join('');
   tform.dns_tries.value = p.dns_tries ?? '';
+  const clients = {builtin: 'Built-in (UDP)', dig: 'dig, like SmokePing'};
+  tform.dns_client.innerHTML = `<option value="">Setting (${clients[A.data.settings.dns_client] || A.data.settings.dns_client})</option>` +
+    Object.entries(clients).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  tform.dns_client.value = p.dns_client || '';
   const offOpts = A.data.settings_schema.find(x => x.key === 'start_offset')?.options || [];
   const offLabel = v => (offOpts.find(o => o[0] === v) || [, v])[1];
   tform.start_offset.innerHTML = `<option value="">Same as Settings (${esc(offLabel(A.data.settings.start_offset).toLowerCase())})</option>` +
     offOpts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
   tform.start_offset.value = p.start_offset || '';
-  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'dns_tries', 'start_offset', 'measure_every'].some(k => p[k] != null && p[k] !== '');
+  $('#probeOpts').open = ['count', 'spacing_ms', 'timeout_ms', 'packet_size', 'dns_tries', 'dns_client', 'start_offset', 'measure_every'].some(k => p[k] != null && p[k] !== '');
   tform.mtr.checked = !!p.mtr; tform.enabled.checked = !!p.enabled; tform.alert_skip.checked = !!p.alert_skip; tform.alert_rounds.value = p.alert_rounds ?? '';
   tform.hide_address.checked = !!p.hide_address;
   const addrHelp = () => {
@@ -407,6 +411,7 @@ function probeChanged(){
   tform.packet_size.placeholder = `default: ${st.ping_size}`;
   $('#sizeField').classList.toggle('hidden', pr.name !== 'ping');
   $('#triesField').classList.toggle('hidden', pr.name !== 'dns');
+  $('#clientField').classList.toggle('hidden', pr.name !== 'dns');
   $('#triesHelp').classList.toggle('hidden', pr.name !== 'dns');
   probeSummary();
 }
@@ -417,7 +422,7 @@ function probeSummary(){
   const off = tform.start_offset.value || st.start_offset;
   const every = +tform.measure_every.value || A.groupMap.get(+tform.group_id.value)?.measure_every_effective || 1;
   $('#probeOptsSum').textContent = `· ${n}${pr === 'ping' ? ` × ${num('packet_size') || st.ping_size} bytes` : ` ${pr === 'dns' ? 'queries' : 'connects'}`}, ` +
-    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms${pr === 'dns' && (+num('dns_tries') || st.dns_tries) > 1 ? ` × ${+num('dns_tries') || st.dns_tries} attempts` : ''}, ${off === 'random' ? 'spread' : 'together'}, every ${everyLabel(every)}`;
+    `${num('spacing_ms') || st.probe_spacing_ms} ms apart, timeout ${num('timeout_ms') || st.timeout_ms} ms${pr === 'dns' && (+num('dns_tries') || st.dns_tries) > 1 ? ` × ${+num('dns_tries') || st.dns_tries} attempts` : ''}${pr === 'dns' && (tform.dns_client.value || st.dns_client) === 'dig' ? ', with dig' : ''}, ${off === 'random' ? 'spread' : 'together'}, every ${everyLabel(every)}`;
 }
 tform.probe.onchange = probeChanged;
 $('#probeOpts').addEventListener('input', probeSummary);
@@ -785,7 +790,8 @@ function viewSettings(){
       Version: <a href="https://github.com/joebafra/PingScope/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" title="Changelog: what changed in each version">${esc(A.version || '–')}</a> · Server time zone: ${esc(A.serverTz || '–')} ·
       Last round: ${st.last_run ? `${fmtShort(st.last_run)} (${ago(st.last_run)}, took ${st.duration}s)` : 'not yet'} ·
       fping: ${st.fping_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
-      mtr: ${st.mtr_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'}</p></div>
+      mtr: ${st.mtr_available ? 'installed' : '<b style="color:var(--bad)">missing</b>'} ·
+      dig: ${st.dig_available ? 'installed' : `<span class="muted">not installed${A.data.settings.dns_client === 'dig' ? ' — <b style="color:var(--bad)">needed for the DNS client setting</b>' : ' (only needed for the dig DNS client)'}</span>`}</p></div>
     <div class="card pad" style="margin-bottom:16px" id="httpsCard"><h2>HTTPS / SSL certificate</h2><p class="muted small" style="margin:6px 0 0">Checking…</p></div>
     <div id="swarn">${A.data.warnings.map(w => `<div class="warnbox">${esc(w)}</div>`).join('')}</div>
     <form id="sform">${sections.map(sec => `<div class="card pad settings-sec"><h3>${esc(sec)}</h3>` +

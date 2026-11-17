@@ -36,6 +36,12 @@ SCHEMA = {
                  "Every target is measured once per interval.", 30, 3600),
     "ping_count": (20, int, "Measurements", "Pings per round", "ICMP echo requests per target per round.", 1, 100),
     "dns_count": (10, int, "Measurements", "DNS queries per round", "Queries per DNS target per round.", 1, 100),
+    "dns_client": ("builtin", str, "Measurements", "DNS client",
+                   "Built-in: PingScope sends the DNS queries itself over UDP. dig: every query runs dig, exactly like "
+                   "SmokePing's DNS probe: +tries from the attempts below, +time from the timeout rounded up to whole "
+                   "seconds, and a TCP retry when an answer is truncated. dig reports whole milliseconds. dig is included "
+                   "in the Docker image; elsewhere install it (apt install bind9-dnsutils). Can be set per target too.",
+                   None, None),
     "dns_tries": (1, int, "Measurements", "DNS attempts per query",
                   "Like dig: a DNS query without an answer within the timeout is sent again, up to this many times, and "
                   "the response time of the answered attempt counts. 1 shows every lost query. SmokePing's DNS probe uses "
@@ -125,6 +131,7 @@ DEFAULTS = {k: v[0] for k, v in SCHEMA.items()}
 
 # Settings that only accept a fixed set of values: key -> [(value, label), ...]
 CHOICES = {
+    "dns_client": [("builtin", "Built-in (UDP)"), ("dig", "dig, like SmokePing")],
     "webhook_format": [("json", "JSON (generic)"), ("slack", "Slack, Mattermost, Rocket.Chat, Google Chat"),
                        ("discord", "Discord")],
     "theme": [("modern", "Modern"), ("classic", "Classic (SmokePing-style)")],

@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS targets(
   alert_skip INTEGER NOT NULL DEFAULT 0, alert_chat_ids TEXT NOT NULL DEFAULT '', alert_rounds INTEGER,
   hide_address INTEGER NOT NULL DEFAULT 0, spacing_ms INTEGER, timeout_ms INTEGER, packet_size INTEGER,
   start_offset TEXT NOT NULL DEFAULT '', measure_every INTEGER, dns_tries INTEGER,
-  hold TEXT NOT NULL DEFAULT '', hold_until INTEGER);
+  hold TEXT NOT NULL DEFAULT '', hold_until INTEGER, dns_client TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS targets_group ON targets(group_id);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS samples(
@@ -63,7 +63,7 @@ ALERT_MODES = ("inherit", "off", "on")
 TARGET_FIELDS = ("name", "probe", "host", "host_v6", "families", "dns_query", "dns_type",
                  "port", "count", "mtr", "enabled", "note", "alert_skip", "alert_chat_ids", "alert_rounds",
                  "hide_address", "spacing_ms", "timeout_ms", "packet_size", "start_offset", "measure_every",
-                 "dns_tries")
+                 "dns_tries", "dns_client")
 
 
 # ---- helpers -------------------------------------------------------------------
@@ -153,7 +153,8 @@ class Store:
         for col, ddl in (("spacing_ms", "INTEGER"), ("timeout_ms", "INTEGER"), ("packet_size", "INTEGER"),
                          ("start_offset", "TEXT NOT NULL DEFAULT ''"),
                          ("measure_every", "INTEGER"), ("dns_tries", "INTEGER"),
-                         ("hold", "TEXT NOT NULL DEFAULT ''"), ("hold_until", "INTEGER")):  # see on_hold()
+                         ("hold", "TEXT NOT NULL DEFAULT ''"), ("hold_until", "INTEGER"),  # see on_hold()
+                         ("dns_client", "TEXT NOT NULL DEFAULT ''")):  # '' = Settings → DNS client
             if col not in tcols:
                 self.c.execute(f"ALTER TABLE targets ADD COLUMN {col} {ddl}")
         gcols = [r[1] for r in self.c.execute("PRAGMA table_info(groups)")]

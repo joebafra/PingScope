@@ -131,8 +131,9 @@ tr.off td{opacity:.5}
         <label class="field" data-f="timeout_ms"><span>Timeout (ms)</span><input name="timeout_ms" type="number" min="100" max="10000"></label>
         <label class="field" data-f="packet_size" id="sizeField"><span>Packet size (bytes)</span><input name="packet_size" type="number" min="12" max="1452"></label>
         <label class="field" data-f="dns_tries" id="triesField"><span>Attempts per query</span><select name="dns_tries"></select></label>
+        <label class="field" data-f="dns_client" id="clientField"><span>DNS client</span><select name="dns_client"></select></label>
       </div>
-      <div class="help hidden" id="triesHelp">Like dig: a query without an answer is sent again, up to this many times, and the time of the answered attempt counts. SmokePing's DNS probe uses 3 attempts with a 5000 ms timeout.</div>
+      <div class="help hidden" id="triesHelp">Attempts: like dig, a query without an answer is sent again, up to this many times, and the time of the answered attempt counts. SmokePing's DNS probe uses 3 attempts with a 5000 ms timeout. DNS client: <i>dig</i> runs dig for every query, exactly like SmokePing (timeout in whole seconds, a TCP retry when an answer is truncated).</div>
       <label class="field" data-f="start_offset"><span>When to measure</span><select name="start_offset"></select>
         <div class="help">Spread gives this target its own fixed random moment in each round, like SmokePing's offset = random, so not every target is sent at once.</div></label>
       <label class="field" data-f="measure_every"><span>Measure every</span><select name="measure_every"></select>

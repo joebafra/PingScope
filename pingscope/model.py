@@ -88,6 +88,9 @@ def clean_target(data, probes):
             continue
         if not lo <= t[k] <= hi:
             err[k] = f"must be between {lo} and {hi}"
+    t["dns_client"] = str(data.get("dns_client") or "").strip().lower()
+    if t["dns_client"] not in ("", "builtin", "dig"):
+        err["dns_client"] = "must be empty (the setting), builtin or dig"
     t["start_offset"] = str(data.get("start_offset") or "").strip().lower()
     if t["start_offset"] not in START_OFFSETS:
         err["start_offset"] = "must be empty (the setting), start or random"

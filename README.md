@@ -87,6 +87,7 @@ It is a single small Python service with a SQLite database. Install it on a Linu
 - **Interval per group or target:** measure some targets less often, e.g. a gateway every minute and a website every 5 minutes (*Measure every* in the group dialog or under *Probe settings*, in whole rounds). Graphs and alerts follow each target's own rounds.
 - **Pause or maintenance** per target, for an hour, 4 hours, a day or until you resume (*Pause…* in the target list, also for a selection): *pause* stops measuring (a gap in the graphs), *maintenance* keeps measuring without alerts. Both end by themselves.
 - **DNS attempts per query:** like dig, a DNS query without an answer can be sent again (up to 3 times) and the time of the answered attempt counts. Default 1, so every lost query shows; SmokePing's DNS probe uses dig's defaults (3 attempts of 5 s), so imported DNS targets get the same.
+- **DNS client: built-in or dig.** By default PingScope sends DNS queries itself over UDP, from one process. Choose *dig* (globally or per target) to run dig for every query, exactly like SmokePing's DNS probe, including dig's TCP retry when an answer is truncated. dig is in the Docker image.
 - **Together or spread:** all targets start at the beginning of each round, or each target gets its own fixed random moment in the round (like SmokePing's `offset = random`), so not everything is sent at once. Set it for all targets and override it per target.
 - **DNS problems don't look like outages:** when the A/AAAA lookup of a hostname target fails (the record is gone, or the DNS server times out or fails), PingScope keeps measuring the **last known address for 24 hours**. The target stays up as long as it answers, with a purple **DNS** badge and an explanation on the graph, and a **DNS alert** is sent. After 24 hours without a working lookup the target is shown as **down** (with a down alert). The last known address is kept in the database, so a restart during a DNS problem doesn't matter. A target whose IPv6 was removed on purpose: set it to *IPv4 only*.
 - **Honest data:** when a probe can't run locally (fping missing, no IPv6 on the server, out of processes), the round is left as a gap instead of being recorded as 100% packet loss, and the error is shown in the admin panel.
@@ -242,7 +243,7 @@ Without a `.env` file Caddy isn't started and PingScope listens on `127.0.0.1:80
 ### Run from source
 
 ```bash
-sudo apt install -y fping mtr-tiny python3-venv
+sudo apt install -y fping mtr-tiny bind9-dnsutils python3-venv
 ```
 
 ```bash
@@ -282,6 +283,7 @@ Everything about what and how PingScope measures is set in **Admin → Settings*
 | Measurement interval | 60 s | 30–3600 | The length of a round: every target is measured once per round, or every N rounds when its group or the target says so. |
 | Pings per round | 20 | 1–100 | ICMP echo requests per target per round. |
 | DNS queries per round | 10 | 1–100 | Queries per DNS target per round. |
+| DNS client | Built-in | | *Built-in* (UDP, from PingScope itself) or *dig*, like SmokePing: dig per query, `+tries` from the attempts, `+time` from the timeout in whole seconds, a TCP retry for truncated answers. Per target too. |
 | DNS attempts per query | 1 | 1–3 | Like dig: a query without an answer is sent again; the answered attempt's time counts. SmokePing (dig) uses 3 attempts of 5000 ms. |
 | TCP connects per round | 10 | 1–100 | Connection attempts per TCP target per round. |
 | Spacing between probes | 1000 ms | 100–10000 | Time between two probes to the same target within a round. |

@@ -433,7 +433,7 @@ These steps are for Ubuntu or Debian.
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-venv fping mtr-tiny
+sudo apt install -y git python3 python3-venv fping mtr-tiny bind9-dnsutils
 sudo useradd --system --home /var/lib/pingscope --create-home --shell /usr/sbin/nologin pingscope
 sudo git clone https://github.com/joebafra/PingScope.git /opt/pingscope
 cd /opt/pingscope
